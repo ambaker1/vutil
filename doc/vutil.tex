@@ -1,0 +1,136 @@
+\documentclass{article}
+
+% Input packages & formatting
+\input{template/packages}
+\input{template/formatting}
+\renewcommand{\cleartooddpage}[1][]{\ignorespaces} % single side
+\newcommand{\caret}{$^\wedge$}
+
+% Other macros
+\renewcommand{\^}[1]{\textsuperscript{#1}}
+\renewcommand{\_}[1]{\textsubscript{#1}}
+
+\title{\Huge Tcl Variable Utilities\\\small Version 0.1.0}
+\author{Alex Baker\\\small\hyperlink{https://github.com/ambaker1/vutil}{https://github.com/ambaker1/vutil}}
+\date{\small\today}
+\begin{document}
+\maketitle
+\begin{abstract}
+When running a parametric study on an Tcl file, the parameters must be configured so that they can be modified from a top-level. 
+The simplest way to achieve this is by commenting-out lines which specify the parameter within the main file. 
+This package provides two additional methods:
+\begin{enumerate}
+\item \textbf{The default value method:} This method requires modification to the main file. 
+It simply assigns default values to variables if the variables do not exist.
+\item \textbf{The lock method:} This method requires no modification to the main file, it simply allows for variables to be set and locked. 
+Any attempts to set the variable will be reversed.
+\end{enumerate}
+Additionally, the vutil package provides garbage collection for TclOO objects, so that when a variable tied to an object goes out of scope or is modified, the corresponding object is destroyed.
+\end{abstract}
+\clearpage
+\section{Default Values}
+A common technique to handle default values is to use the \textit{info exists} command in Tcl. This method is formalized with the vutil command \cmdlink{default}, which simply assigns default values to variables if the variables do not exist. Variables set using the \cmdlink{default} command will be available to override from a top-level.
+
+\begin{syntax}
+\command{default} \$varname \$value
+\end{syntax}
+\begin{args}
+\$varname & Name of variable to set \\
+\$value & Default value for variable
+\end{args}
+
+The example below shows how default values are only applied if the variable does not exist.
+
+\begin{example}{Variable defaults}
+\begin{lstlisting}
+set a 5
+default a 7
+puts $a
+unset a
+default a 7
+puts $a
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+5
+7
+\end{lstlisting}
+\end{example}
+\clearpage
+\section{Variable Locks}
+The lock method uses Tcl variable traces to prevent any further modification to variables while locked. This method does not require any modification of the main file. The main command for this method, \cmdlink{lock}, locks variables for editing. Any attempts to modify a locked variable will be reversed. 
+
+\begin{syntax}
+\command{lock} \$varName \$value
+\end{syntax}
+\begin{args}
+\$varName & Variable name to lock. \\
+\$value & Value to lock variable at.
+\end{args}
+
+The command \cmdlink{unlock} unlocks previously locked variables so that they can be modified again.
+
+\begin{syntax}
+\command{unlock} \$var1 \$var2 …
+\end{syntax}
+\begin{args}
+\$var1 \$var2 … & Variables to unlock.
+\end{args}
+
+\begin{example}{Variable locks}
+\begin{lstlisting}
+lock a 5
+set a 7
+puts $a
+unlock a
+set a 7
+puts $a
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+5
+7
+\end{lstlisting}
+\end{example}
+
+\clearpage
+
+\section{Variable-Object Ties}
+As of Tcl version 8.6, there is no garbage collection for Tcl objects, they have to be removed manually with the ``destroy'' method. 
+The command \cmdlink{tie} is a solution for this problem, using variable traces to destroy the corresponding object when the variable is unset or modified. 
+Tie is separate from lock; a tie will override a lock, and a lock will override a tie.
+\begin{syntax}
+\command{tie} \$varName \$object
+\end{syntax}
+\begin{args}
+\$varName & Variable name to tie to object. \\
+\$object & Object to tie variable to.
+\end{args}
+
+In similar fashion to \cmdlink{unlock}, tied variables can be untied with the command \cmdlink{untie}.
+
+\begin{syntax}
+\command{untie} \$var1 \$var2 …
+\end{syntax}
+\begin{args}
+\$var1 \$var2 … & Variables to untie.
+\end{args}
+
+\begin{example}{Variable-object ties}
+\begin{lstlisting}
+oo::class create foo {
+    method hi {} {
+        puts hi
+    }
+}
+tie a [foo create bar]
+set b $a; # alias variable
+unset a; # triggers ``destroy''
+$b hi; # throws error
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+invalid command name "::bar"
+\end{lstlisting}
+\end{example}
+\end{document}
