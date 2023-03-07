@@ -1,2 +1,2 @@
-# ctrl
-Advanced variable control in Tcl
+# vutil
+Advanced variable utilities for Tcl
