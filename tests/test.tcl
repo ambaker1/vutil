@@ -35,4 +35,16 @@ $myHeart eval {
 	pack .c
 	.c create polygon 100 55 75 33 35 45 20 100 100 170 100 170 180 100 165 45 125 33 100 55 100 55 -smooth true -fill red
 }
-mainLoop; # Try unsetting "myHeart", and watch widget go away.
+mainLoop break; # Try unsetting "myHeart", and watch widget go away. Press enter to continue.
+
+# Using vutil for parameter study
+source Cantilever.tcl; # Has defaults for I and L
+pvar E I L
+set I 2000.0
+set L 40.0
+source Cantilever.tcl
+pvar E I L
+lock E [expr {$E*2}]; # Override "set E 29000.0"
+source Cantilever.tcl
+pvar E I L
+
