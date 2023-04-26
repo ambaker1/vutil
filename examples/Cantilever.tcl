@@ -13,6 +13,11 @@ default I 1000.0; # in^4
 set A 100.0; # in^2 (should not affect results)
 set E 29000.0; # ksi
 
+# Print variables to screen
+puts "E = $E"
+puts "I = $I"
+puts "L = $L"
+
 # Define nodes
 node 1 0 0
 node 2 $L 0

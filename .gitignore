@@ -1,5 +1,6 @@
-releases/**
+build/**
 doc/**
 !doc/vutil.tex
+!doc/vutil.pdf
 !doc/template/
 !doc/template/*.tex

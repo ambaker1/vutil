@@ -146,4 +146,4 @@ proc ::vutil::TieTrace {value name1 name2 op} {
 }
 
 # Finally, provide the package
-package provide vutil 0.1.1
+package provide vutil @VERSION@
