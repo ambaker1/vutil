@@ -1,7 +1,7 @@
 # vutil
 Advanced variable utilities for Tcl
 
-Full documentation [here](doc/vutil.pdf).
+Full documentation [here](https://raw.githubusercontent.com/ambaker1/vutil/main/doc/vutil.pdf).
  
 ## Installation
 This package is a Tin package. 
