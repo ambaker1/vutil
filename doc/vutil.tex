@@ -62,11 +62,11 @@ puts $a
 The lock method uses Tcl variable traces to prevent any further modification to variables while locked. This method does not require any modification of the main file. The main command for this method, \cmdlink{lock}, locks variables for editing. Any attempts to modify a locked variable will be reversed. 
 
 \begin{syntax}
-\command{lock} \$varName \$value
+\command{lock} \$varName <\$value>
 \end{syntax}
 \begin{args}
 \$varName & Variable name to lock. \\
-\$value & Value to lock variable at.
+\$value & Value to lock variable at. Default self-locks (uses current value).
 \end{args}
 
 The command \cmdlink{unlock} unlocks previously locked variables so that they can be modified again.
@@ -101,11 +101,11 @@ As of Tcl version 8.6, there is no garbage collection for Tcl objects, they have
 The command \cmdlink{tie} is a solution for this problem, using variable traces to destroy the corresponding object when the variable is unset or modified. 
 Tie is separate from lock; a tie will override a lock, and a lock will override a tie.
 \begin{syntax}
-\command{tie} \$varName \$object
+\command{tie} \$varName <\$object>
 \end{syntax}
 \begin{args}
 \$varName & Variable name to tie to object. \\
-\$object & Object to tie variable to.
+\$object & Object to tie variable to. Default self-ties (uses current value).
 \end{args}
 
 In similar fashion to \cmdlink{unlock}, tied variables can be untied with the command \cmdlink{untie}.
