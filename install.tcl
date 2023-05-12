@@ -1,6 +1,5 @@
-package require tin 0.4
-set dir [tin mkdir -force vutil 0.1.1]
-file copy README.md $dir 
-file copy LICENSE $dir 
-file copy vutil.tcl $dir 
-file copy pkgIndex.tcl $dir
+package require tin
+tin require tin 0.5.1-
+tin depend errmsg 0.2
+set dir [tin mkdir -force vutil 0.2]
+file copy README.md LICENSE pkgIndex.tcl vutil.tcl $dir 

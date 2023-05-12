@@ -9,6 +9,8 @@
 # DISCLAIMER OF ALL WARRANTIES.
 ################################################################################
 
+package require errmsg 0.2
+
 # Define namespace
 namespace eval ::vutil {
     # Exported Commands
@@ -21,9 +23,12 @@ namespace eval ::vutil {
 #
 # Soft set of a variable. Only sets the variable if it does not exist.
 #
+# Syntax:
+# default $varName $value
+#
 # Arguments:
-# varname:      Variable name
-# value:        Variable default value
+# varName       Variable name
+# value         Variable default value
 
 proc ::vutil::default {varName value} {
     upvar 1 $varName var
@@ -39,12 +44,27 @@ proc ::vutil::default {varName value} {
 #
 # Hard set of a variable. locked variables cannot be modified by set or default
 #
+# Syntax:
+# lock $varName <$value>
+#
 # Arguments:
-# varName:      Variable to lock
-# value:        Value to set
+# varName       Variable to lock
+# value         Value to set
 
-proc ::vutil::lock {varName value} {
+proc ::vutil::lock {varName args} {
     upvar 1 $varName var
+    # Switch for arity (allow for self-tie)
+    if {[llength $args] == 0} {
+        if {[info exists var]} {
+            set value $var
+        } else {
+            return -code error "can't read \"$varName\": no such variable"
+        }
+    } elseif {[llength $args] == 1} {
+        set value [lindex $args 0]
+    } else {
+        ::errmsg::wrongNumArgs "lock varName ?value?"
+    }
     # Remove any existing lock trace
     if {[info exists var]} {
         uplevel 1 [list ::vutil::unlock $varName]
@@ -60,8 +80,11 @@ proc ::vutil::lock {varName value} {
 #
 # Unlock defined variables
 #
+# Syntax:
+# unlock $varName ...
+#
 # Arguments:
-# args:         Variables to unlock
+# varName...    Variables to unlock
 
 proc ::vutil::unlock {args} {
     foreach varName $args {
@@ -72,19 +95,33 @@ proc ::vutil::unlock {args} {
         uplevel 1 [list trace remove variable $varName write \
                 [list ::vutil::LockTrace $var]]
     }
+    return
 }
 
 # LockTrace --
+#
 # Private procedure, used for enforcing locked value
+#
+# Syntax:
+# LockTrace $value $varName $index $op
+#
+# Arguments:
+# value         Value to lock
+# varName       Variable (or array) name
+# index         Index of array if variable is array
+# op            Trace operation (unused)
 
-proc ::vutil::LockTrace {value name1 name2 op} {
-    upvar 1 $name1 var
+proc ::vutil::LockTrace {value varName index op} {
+    upvar 1 $varName var
     if {[array exists var]} {
-        set var($name2) $value
+        set var($index) $value
     } else {
         set var $value
     }
 }
+
+# TCLOO GARBAGE COLLECTION
+################################################################################
 
 # tie --
 # 
@@ -92,33 +129,57 @@ proc ::vutil::LockTrace {value name1 name2 op} {
 # unset, by unset or by going out of scope, that the object is destroyed as well
 # Overrides locks. 
 #
+# Syntax:
+# tie $varName <$object>
+#
 # Arguments:
 # varName:      Variable representing object
-# value:        Value to set, must be Tcl object command
+# object:       Value to set, must be Tcl object command
 
-proc ::vutil::tie {varName value} {
+proc ::vutil::tie {varName args} {
+    upvar 1 $varName var
+    # Switch for arity (allow for self-tie)
+    if {[llength $args] == 0} {
+        if {[info exists var]} {
+            set object $var
+        } else {
+            return -code error "can't read \"$varName\": no such variable"
+        }
+    } elseif {[llength $args] == 1} {
+        set object [lindex $args 0]
+    } else {
+        ::errmsg::wrongNumArgs "tie varName ?object?"
+    }
     # Verify object
-    if {![info object isa object $value]} {
+    if {![info object isa object $object]} {
         return -code error "\"$value\" is not an object"
     }
-    upvar 1 $varName var
-    # Remove any existing lock trace
+    # Remove any existing lock and tie traces
     if {[info exists var]} {
         uplevel 1 [list ::vutil::unlock $varName]
+        uplevel 1 [list ::vutil::untie $varName]
     }
-    # Set value and define tie trace
-    set var $value; # triggers any existing tie trace
+    # Set the value of the variable and add TieTrace
+    set var $object
     uplevel 1 [list trace add variable $varName {write unset} \
-                [list ::vutil::TieTrace $var]]
-    return $value
+                [list ::vutil::TieTrace $object]]
+    # Return the value (like with "set")
+    return $object
 }
 
 # untie --
 # 
 # Untie variables from their respective Tcl objects.
+#
+# Syntax:
+# untie $varName ...
+#
+# Arguments:
+# varName...    Variables to unlock
 
 proc ::vutil::untie {args} {
     foreach varName $args {
+        set varName [lindex $args 0]
         upvar 1 $varName var
         if {![info exists var]} {
             return -code error "can't untie \"$varName\": no such variable"
@@ -126,21 +187,32 @@ proc ::vutil::untie {args} {
         uplevel 1 [list trace remove variable $varName {write unset} \
                 [list ::vutil::TieTrace $var]]
     }
+    return
 }
 
 # TieTrace --
 #
-# Destroys associated Tcl object when a tied variable is written to or deleted
-# Also removes the associated unset tracer if 
+# Destroys associated Tcl object and removes ties
+#
+# Syntax:
+# TieTrace $object $varName $index $op
+#
+# Arguments:
+# object        Object to tie
+# varName       Variable (or array) name
+# index         Index of array if variable is array
+# op            Trace operation (unused)
 
-proc ::vutil::TieTrace {value name1 name2 op} {
-    catch {uplevel 1 [list $value destroy]}
-    upvar 1 $name1 var
+proc ::vutil::TieTrace {object varName index op} {
+    # Destroy object (with catch, in case it was already destroyed)
+    catch {$object destroy}
+    # Untie the variable
+    upvar 1 $varName var
     if {[info exists var]} {
         if {[array exists var]} {
-            uplevel 1 [list ::vutil::untie "$name1\($name2\)"]
+            uplevel 1 [list ::vutil::untie "$varName\($index\)"]
         } else {
-            uplevel 1 [list ::vutil::untie $name1]
+            uplevel 1 [list ::vutil::untie $varName]
         }
     }
 }
