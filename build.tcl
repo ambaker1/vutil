@@ -1,6 +1,6 @@
 package require tin 0.4
 tin import tcltest
-set vutil_version 0.1.1
+set vutil_version 0.2
 set config ""
 dict set config VERSION $vutil_version
 tin bake src/vutil.tin build/vutil.tcl $config
@@ -57,6 +57,20 @@ test unlock {
     set a 5
 } -result {5}
 
+test self-lock {
+    You can self-lock a variable
+} -body {
+    lock a
+    set a 3
+    lock a
+} -result {5}
+
+test lock-trace-count {
+    Verify that the number of lock traces on a is 1.
+} -body {
+    llength [trace info variable a]
+} -result {1}
+
 # tie
 test tie1 {
     Trying to tie to something that is not an object will return an error.
@@ -96,6 +110,23 @@ test tie2 {
     lappend result [info exists b]; # true, does not delete variable
     
 } -result {1 1 0 0 1 1 0 1 1}
+
+test self-tie {
+    Ensure that you can self-tie a variable
+} -body {
+    set a [fruit new]
+    tie a; # Ties a to $a
+    set b $a; # Alias
+    unset a; # Destroys the object
+    info object isa object $b
+} -result {0}
+
+test tie-trace-count {
+    Ensure that the number of traces is 1
+} -body {
+    tie a [fruit new]
+    llength [trace info variable a]
+} -result {1}
 
 # Check number of failed tests
 set nFailed $::tcltest::numTests(Failed)
