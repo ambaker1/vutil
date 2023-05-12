@@ -1,11 +1,8 @@
-package require tin 0.4
+package require tin 0.5
 tin import tcltest
-set vutil_version 0.2
-set config ""
-dict set config VERSION $vutil_version
-tin bake src/vutil.tin build/vutil.tcl $config
-tin bake src/pkgIndex.tin build/pkgIndex.tcl $config
-tin bake src/install.tin build/install.tcl $config
+set version 0.2
+set config [dict create VERSION $version]
+tin bake src build $config
 tin bake doc/template/version.tin doc/template/version.tex $config
 
 # Test vutil (this is a manual test)
@@ -141,4 +138,9 @@ if {$nFailed > 0} {
 
 # Tests passed, copy build files to main folder and install
 file copy -force {*}[glob -directory build *] [pwd]
-source install.tcl; # Install vutil in main library
+exec tclsh install.tcl
+
+# Verify installation
+tin forget vutil
+tin clear
+tin import vutil -exact $version
