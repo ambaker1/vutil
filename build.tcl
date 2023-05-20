@@ -1,4 +1,4 @@
-package require tin 0.5
+package require tin 0.6
 tin import tcltest
 set version 0.3
 set config [dict create VERSION $version]
@@ -167,6 +167,63 @@ test tie-trace-count {
     tie a [fruit new]
     llength [trace info variable a]
 } -result {1}
+
+test obj_new {
+    Create an object with automatic name
+} -body {
+    obj new a foo
+    $a
+} -result {foo}
+
+test obj_create {
+    Create an object with name
+} -body {
+    obj create myObj b foo
+    list [myObj] [$b]
+} -result {foo foo}
+
+test obj_gc {
+    Ensure that objects are deleted inside procedures (garbage collection)
+} -body {
+    proc foo {value} {
+        obj new a $value
+        return $a
+    }
+    info object isa object [foo hi]
+} -result {0}
+
+test obj_gc2 {
+    Pass values from objects
+} -body {
+    proc foo {value} {
+        obj new x $value
+        return [$x]
+    }
+    foo hi
+} -result {hi}
+
+test obj_assignment {
+    Assign values
+} -body {
+    obj new x
+    $x <- {hello world}
+    $x
+} -result {hello world}
+
+test obj_copy {
+    Copy object
+} -body {
+    $x -> y
+    $y
+} -result {hello world}
+
+test obj_copygc {
+    Ensure that garbage collection is set up on copied object
+} -body {
+    set z $y
+    unset y; # Destroys object
+    info object isa object $z
+} -result {0}
 
 # Check number of failed tests
 set nFailed $::tcltest::numTests(Failed)

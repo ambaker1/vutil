@@ -19,6 +19,7 @@ namespace eval ::vutil {
     namespace export default; # Set a variable if it does not exist
     namespace export lock unlock; # Hard set a Tcl variable
     namespace export tie untie; # Tie a Tcl variable to a Tcl object
+    namespace export obj; # Object variable class
 }
 
 # pvar --
@@ -264,6 +265,55 @@ proc ::vutil::TieTrace {objName varName index op} {
             untie refVar
         }
     }
+}
+
+# obj --
+#
+# Class for object variables that store a value and have garbage collection
+#
+# Syntax:
+# obj new $varName <$value>
+# obj create $name $varName <$value>
+#
+# $$varName <- $value       # Assignment
+# $$varName -> $varName     # Copy
+# $$varName                 # Get value
+#
+# Arguments:
+# varName       Variable to tie to the object
+# value         Value to assign to the object
+# name          Name of object
+
+oo::class create ::vutil::obj {
+    variable objValue
+    constructor {varName {value {}}} {
+        # Initialize object
+        my <- $value
+        # Set up garbage collection
+        uplevel 1 [list ::vutil::tie $varName [self]]
+        return
+    }
+    # Direct value assignment
+    method <- {value} {
+        set objValue $value
+    }
+    export <-
+    # Copy object, and tie to variable
+    method -> {varName args} {
+        # Copy object
+        set objCopy [uplevel 1 [list oo::copy [self] {*}$args]]
+        # Set up garbage collection
+        uplevel 1 [list ::vutil::tie $varName $objCopy]
+    }
+    export ->
+    # Object value
+    method unknown {args} {
+        if {[llength $args] == 0} {
+            return $objValue
+        }
+        next {*}$args
+    }
+    unexport unknown
 }
 
 # Finally, provide the package
