@@ -1,6 +1,7 @@
 # vutil.tcl
 ################################################################################
 # Advanced variable manipulation commands for Tcl
+# Object variable class and garbage collection
 
 # Copyright (C) 2023 Alex Baker, ambaker1@mtu.edu
 # All rights reserved. 
@@ -13,13 +14,16 @@ package require errmsg 0.4
 
 # Define namespace
 namespace eval ::vutil {
+    # Internal variables
+    variable types
     # Exported Commands
     namespace export pvar; # Print variables and their values
     namespace export local; # Access local namespace variables (like global)
     namespace export default; # Set a variable if it does not exist
     namespace export lock unlock; # Hard set a Tcl variable
     namespace export tie untie; # Tie a Tcl variable to a Tcl object
-    namespace export obj; # Object variable class
+    namespace export link unlink; # Link an object to a variable with same name
+    namespace export obj type new; # Object variable class and type
 }
 
 # pvar --
@@ -267,53 +271,405 @@ proc ::vutil::TieTrace {objName varName index op} {
     }
 }
 
+# link --
+#
+# Link an obj to a variable for garbage collection
+# Puts a tie on varName, and traces on variable with same name as object.
+# This allows for manipulation of obj variables with normal Tcl commands.
+#
+# Syntax:
+# link $objName
+#
+# Arguments:
+# varName       Variable to link to object
+# objName       Object name. Default value of "$varName"
+
+proc ::vutil::link {varName args} {
+    # Check arity
+    if {[llength $args] > 1} {
+        ::errmsg::wrongNumArgs "link varName ?objName?"
+    }
+    # Create upvar link
+    upvar 1 $varName refVar
+    # Get objName and handle "self-link"
+    if {[llength $args] == 0} {
+        if {![info exists refVar]} {
+            return -code error "can't read \"$varName\": no such variable"
+        }
+        set objName $refVar
+    } else {
+        set objName [lindex $args 0]
+    }
+    # Verify object
+    if {![info object isa object $objName]} {
+        return -code error "\"$objName\" is not an object"
+    }
+    # Create reference variable tie for garbage collection
+    tie refVar $objName
+    # Clear up locks and links if $objRef exists
+    upvar 1 $objName linkVar
+    if {[info exists linkVar]} {
+        unlock linkVar
+        unlink linkVar; # Also unties the variable
+    }
+    # Create traces on object variable
+    trace add variable linkVar {read write} "::vutil::LinkTrace $objName"
+    # Return the name of the object
+    return $objName
+}
+
+# unlink --
+#
+# Unlink an object variable
+#
+# Syntax:
+# unlink $varName ...
+#
+# Arguments:
+# varName ...       Reference variable tied to object
+
+proc ::vutil::unlink {args} {
+    foreach varName $args {
+        upvar 1 $varName refVar
+        if {![info exists refVar]} {
+            return -code error "can't unlink \"$varName\": no such variable"
+        }
+        untie refVar
+        set objName $refVar
+        upvar 1 $objName linkVar
+        trace remove variable linkVar {read write} "::vutil::LinkTrace $objName"
+    }
+    return
+}
+
+# LinkTrace --
+#
+# Link trace command for object variables
+#
+# Syntax:
+# LinkTrace $objName $varName $index $op
+#
+# Arguments:
+# objName       Object name
+# varName       Variable name linked to object
+# index         Index of array, or new name (unused)
+# op            Operation (read or write)
+
+proc ::vutil::LinkTrace {objName varName index op} {
+    upvar 1 $varName linkVar
+    switch $op {
+        read { # Get value from object
+            set linkVar [$objName]
+        }
+        write { # Assign value to object
+            $objName = $linkVar
+        }
+    }
+}
+
 # obj --
 #
 # Class for object variables that store a value and have garbage collection
 #
-# Syntax:
-# obj new $varName <$value>
-# obj create $name $varName <$value>
-#
-# $$varName <- $value       # Assignment
-# $$varName -> $varName     # Copy
-# $$varName                 # Get value
+# $obj <value>          # Get object value
+# $obj info <$key>      # Get object info array (or single value)
+# $obj = $value         # Value assignment
+# $obj1 <- $obj2        # Direct assignment (must be same class)
+# $obj1 -> $obj2        # Direct assignment (must be same class)
+# $obj --> $varName     # Copy object (and set up tie/link)
 #
 # Arguments:
 # varName       Variable to tie to the object
 # value         Value to assign to the object
 # name          Name of object
 
-oo::class create ::vutil::obj {
-    variable objValue
-    constructor {varName {value {}}} {
+::oo::class create ::vutil::obj {
+    variable ""; # Array of object data
+    constructor {varName args} {
+        # Check arity
+        if {[llength $args] > 2} {
+            ::errmsg::wrongNumArgs "obj new varName ??=? value | <- object?" \\
+                    "obj create name varName ??=? value | <- object?"
+        }
         # Initialize object
-        my <- $value
-        # Set up garbage collection
-        uplevel 1 [list ::vutil::tie $varName [self]]
-        return
+        ::vutil::default (type) obj; # Default type
+        ::vutil::default (value) ""; # Default value (blank)
+        if {[llength $args] == 1} {
+            # obj new $varName $value
+            my = [lindex $args 0]; # Assign value
+        } elseif {[llength $args] == 2} {
+            # obj new $varName = $value
+            # obj new $varName <- $object
+            lassign $args op value
+            if {$op ni {= <-}} {
+                ::errmsg::unknownOption $op {= <-}
+            }
+            my $op $value
+        }
+        # Link object
+        upvar 1 $varName refVar
+        ::vutil::link refVar [self]
     }
-    # Direct value assignment
-    method <- {value} {
-        set objValue $value
+    
+    # Destroy value link
+    destructor {
+        unset [self]
     }
-    export <-
-    # Copy object, and tie to variable
-    method -> {varName args} {
-        # Copy object
-        set objCopy [uplevel 1 [list oo::copy [self] {*}$args]]
-        # Set up garbage collection
-        uplevel 1 [list ::vutil::tie $varName $objCopy]
+    
+    # info --
+    #
+    # Meta data 
+    #
+    # Syntax:
+    # $obj info <$key>
+    #
+    # Arguments:
+    # obj       Object name
+    # key       Optional key. Default "" returns all.
+    
+    method info {{key ""}} {
+        if {$key eq ""} {
+            return [array get ""]
+        } elseif {[info exists ($key)]} {
+            return $($key)
+        } else {
+            ::errmsg::unknownOption $key [lsort [array names ""]]
+        }
     }
-    export ->
-    # Object value
+    
+    # value () --
+    #
+    # Object value query 
+    #
+    # Syntax:
+    # my GetValue
+    # $obj
+    
+    method value {} {
+        return $(value)
+    }
     method unknown {args} {
         if {[llength $args] == 0} {
-            return $objValue
+            tailcall my value
         }
         next {*}$args
     }
     unexport unknown
+    
+    # SetValue (=) --
+    #
+    # Value assignment (uses private method "SetValue"). 
+    # Modify "SetValue" to add data validation and add metadata.
+    #
+    # Syntax:
+    # my SetValue $value
+    # $obj = $value
+    #
+    # Arguments:
+    # obj       Object
+    # value     Value to assign
+    
+    method SetValue {value} {
+        set (value) $value
+    }
+    method = {value} {
+        tailcall my SetValue $value
+    }
+    export =
+  
+    # SetObject (<-) --
+    # 
+    # Right-to-left direct assignment (must be same class)
+    #
+    # Syntax:
+    # my SetObject $obj
+    # $obj1 <- $obj2
+    #
+    # Arguments:
+    # obj1, obj2    Objects of same class
+
+    method SetObject {object} {
+        my SameClass $object
+        $object -> [self]
+    }
+    method <- {object} {
+        tailcall my SetObject $object
+    }
+    export <-
+    
+    # ObjectSet (->) --
+    #
+    # Left-to-right direct assignment (must be same class)
+    #
+    # Syntax:
+    # my ObjectSet $obj
+    # $obj1 -> $obj2
+    #
+    # Arguments:
+    # obj1, obj2    Objects of same class
+    
+    method ObjectSet {object} {
+        my SameClass $object
+        array set "" [$object info]
+        return [self]
+    }
+    method -> {object} {
+        tailcall my ObjectSet $object
+    }
+    export ->
+    
+    # SameClass --
+    #
+    # Ensure that the direct assignment is between objects of the same class
+    # 
+    # Syntax:
+    # my SameClass $object
+    #
+    # Arguments:
+    # object        Other object to check
+    
+    method SameClass {object} {
+        if {![info object isa object $object]} {
+            return -code error "$object is not an object"
+        }
+        if {![info object class $object [info object class [self]]]} {
+            return -code error "$object not of same class as [self]"
+        }
+    }
+    
+    # CopyObject (-->) --
+    #
+    # Copy object to new variable
+    #
+    # Syntax:
+    # my CopyObject $obj <$args ...>
+    # $obj --> $varName <$args ...>
+    #
+    # Arguments:
+    # obj           Object
+    # varName       Variable to copy to
+    # $args ...     Optional arguments to pass to ::oo::copy
+    
+    method CopyObject {varName args} {
+        upvar 1 $varName refVar
+        ::vutil::link refVar [::oo::copy [self] {*}$args]
+    }
+    method --> {varName args} {
+        tailcall my CopyObject $varName
+    }
+    export -->
+}
+
+# type --
+#
+# Class to create types
+
+::oo::class create ::vutil::type {
+    superclass ::oo::class
+    constructor {type args} {
+        oo::define [self] superclass ::vutil::obj
+        oo::define [self] variable ""
+        next {*}$args
+        [self class] add $type [self]
+    }
+}
+::oo::objdefine ::vutil::type {
+    variable typeClass
+    method add {type class} {
+        set typeClass($type) $class
+    }
+    method remove {type} {
+        if {[my exists $type]} {
+            unset typeClass($type)
+        }
+    }
+    method names {} {
+        array names typeClass
+    }
+    method exists {type} {
+        info exists typeClass($type)
+    }
+    method class {type} {
+        if {![my exists $type]} {
+            return -code error "type $type does not exist"
+        }
+        return $typeClass($type)
+    }
+}
+
+# new --
+#
+# Create a new object variable (with type)
+#
+# new $type $varName <"=" $value> <"<-" $object>
+
+proc ::vutil::new {type varName args} {
+    tailcall [type class $type] new $varName {*}$args
+}
+
+# Define basic datatypes
+
+# string
+::vutil::type new string {
+    method SetValue {value} {
+        set (length) [string length $value]
+        next $value
+    }
+}
+
+# list (length is llength)
+# unknown does indexing/setting
+::vutil::type new list {
+    method SetValue {value} {
+        if {[catch {llength $value} length]} {
+            return -code error "input is not a list"
+        }
+        set (length) $length
+        next $value
+    }
+    method length {} {
+        return $(length)
+    }
+    method unknown {args} {
+        try {
+            if {[lindex $args end-1] eq "="} {
+                # $list $i .. = $value
+                lset (value) {*}[lrange $args 0 end-2] [lindex $args end]
+                set (length) [llength $(value)]
+                return
+            } else {
+                # $list $i ..
+                return [lindex $(value) {*}$args]
+            }
+        } on error {result options} {
+            next {*}$args
+        }
+    }
+    unexport unknown
+}
+
+# double (automatically uses expr)
+::vutil::type new double {
+    method SetValue {args} {
+        if {[llength $args] > 0} {
+            next [::tcl::mathfunc::double [uplevel 1 expr $args]]
+        }
+    }
+}
+
+# int (automatically uses expr)
+::vutil::type new int {
+    method SetValue {args} {
+        set value [uplevel 1 expr $args]
+        if {![string is integer -strict $value]} {
+            return -code error "value must be integer"
+        }
+        next $value
+    }
+    method += {{incr 1}} {
+        incr (value) $incr
+    }
+    export +=
 }
 
 # Finally, provide the package
