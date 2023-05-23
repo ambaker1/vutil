@@ -278,42 +278,24 @@ proc ::vutil::TieTrace {objName varName index op} {
 # This allows for manipulation of obj variables with normal Tcl commands.
 #
 # Syntax:
-# link $varName <$objName>
+# link $objName
 #
 # Arguments:
-# varName       Variable to link to object
 # objName       Object name. Default value of "$varName"
 
-proc ::vutil::link {varName args} {
-    # Check arity
-    if {[llength $args] > 1} {
-        ::errmsg::wrongNumArgs "link varName ?objName?"
-    }
-    # Create upvar link
-    upvar 1 $varName refVar
-    # Get objName and handle "self-link"
-    if {[llength $args] == 0} {
-        if {![info exists refVar]} {
-            return -code error "can't read \"$varName\": no such variable"
-        }
-        set objName $refVar
-    } else {
-        set objName [lindex $args 0]
-    }
+proc ::vutil::link {objName} {
     # Verify object
     if {![info object isa object $objName]} {
         return -code error "\"$objName\" is not an object"
     }
-    # Create reference variable tie for garbage collection
-    tie refVar $objName
     # Clear up locks and links if $objName exists
-    upvar 1 $objName objVar
-    if {[info exists objVar]} {
-        unlock objVar
-        unlink objVar; # Also unties the variable
+    if {[info exists $objName]} {
+        unlock $objName
+        untie $objName
+        unlink $objName
     }
     # Create traces on object variable and command
-    trace add variable objVar {read write} "::vutil::LinkTrace $objName"
+    trace add variable $objName {read write} [list ::vutil::LinkTrace $objName]
     trace add command $objName delete ::vutil::DestroyTrace
     # Return the name of the object
     return $objName
@@ -324,21 +306,21 @@ proc ::vutil::link {varName args} {
 # Unlink an object variable
 #
 # Syntax:
-# unlink $varName ...
+# unlink $objName ...
 #
 # Arguments:
-# varName ...       Reference variable tied to object
+# objName ...       Object to unlink
 
 proc ::vutil::unlink {args} {
-    foreach varName $args {
-        upvar 1 $varName refVar
-        if {![info exists refVar]} {
-            return -code error "can't unlink \"$varName\": no such variable"
+    foreach objName $args {
+        if {![info object isa object $objName]} {
+            return -code error "\"$objName\" is not an object"
         }
-        untie refVar
-        set objName $refVar
-        upvar 1 $objName objVar
-        trace remove variable objVar {read write} "::vutil::LinkTrace $objName"
+        if {![info exists $objName]} {
+            return -code error "can't unlink \"$objName\": no such object"
+        }
+        trace remove variable $objName {read write} \
+                [list ::vutil::LinkTrace $objName]
         trace remove command $objName delete ::vutil::DestroyTrace
     }
     return
@@ -367,6 +349,7 @@ proc ::vutil::LinkTrace {objName varName index op} {
             $objName = $objVar
         }
     }
+    return
 }
 
 # DestroyTrace --
@@ -379,6 +362,7 @@ proc ::vutil::LinkTrace {objName varName index op} {
 
 proc ::vutil::DestroyTrace {objName args} {
     catch {unset $objName}
+    return
 }
 
 # obj --
@@ -386,6 +370,7 @@ proc ::vutil::DestroyTrace {objName args} {
 # Class for object variables that store a value and have garbage collection
 #
 # $obj                  # Get object value
+# $obj                  # Whether object value exists
 # $obj info <$key>      # Get object info array (or single value)
 # $obj = $value         # Value assignment
 # $obj1 <- $obj2        # Object assignment (must be same class)
@@ -405,9 +390,8 @@ proc ::vutil::DestroyTrace {objName args} {
                     "obj create name varName ??=? value | <- object?"
         }
         # Initialize object
-        if {[llength $args] == 0} {
-            set (value) [my DefaultValue]
-        } elseif {[llength $args] == 1} {
+        array set "" ""
+        if {[llength $args] == 1} {
             # obj new $varName $value
             my = [lindex $args 0]; # Assign value
         } elseif {[llength $args] == 2} {
@@ -419,23 +403,15 @@ proc ::vutil::DestroyTrace {objName args} {
             }
             my $op $value
         }
-        # Link object
+        # Link and tie object
         upvar 1 $varName refVar
-        ::vutil::link refVar [self]
-    }
-    
-    # DefaultValue --
-    # Method to get default value. Override when creating data types.
-    method DefaultValue {} {return}
-    
-    # Destroy value link
-    destructor {
-        unset [self]
+        ::vutil::link [::vutil::tie refVar [self]]
+        return
     }
     
     # info --
     #
-    # Meta data 
+    # Get meta data on object
     #
     # Syntax:
     # $obj info <$key>
@@ -454,7 +430,7 @@ proc ::vutil::DestroyTrace {objName args} {
         }
     }
     
-    # GetValue () --
+    # GetValue (unknown) --
     #
     # Object value query 
     #
@@ -463,6 +439,9 @@ proc ::vutil::DestroyTrace {objName args} {
     # $obj
     
     method GetValue {} {
+        if {![info exists (value)]} {
+            return -code error "can't read [self], no such variable"
+        }
         return $(value)
     }
     method unknown {args} {
@@ -535,7 +514,7 @@ proc ::vutil::DestroyTrace {objName args} {
     
     method CopyObject {varName args} {
         upvar 1 $varName refVar
-        ::vutil::link refVar [::oo::copy [self] {*}$args]
+        ::vutil::link refVar [::oo::copy [self] {*}$args]]
     }
     method --> {varName args} {
         tailcall my CopyObject $varName
@@ -579,7 +558,6 @@ proc ::vutil::DestroyTrace {objName args} {
         return $typeClass($type)
     }
 }
-
 
 # new --
 #
