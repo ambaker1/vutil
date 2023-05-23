@@ -278,7 +278,7 @@ proc ::vutil::TieTrace {objName varName index op} {
 # This allows for manipulation of obj variables with normal Tcl commands.
 #
 # Syntax:
-# link $objName
+# link $varName <$objName>
 #
 # Arguments:
 # varName       Variable to link to object
@@ -306,14 +306,15 @@ proc ::vutil::link {varName args} {
     }
     # Create reference variable tie for garbage collection
     tie refVar $objName
-    # Clear up locks and links if $objRef exists
-    upvar 1 $objName linkVar
-    if {[info exists linkVar]} {
-        unlock linkVar
-        unlink linkVar; # Also unties the variable
+    # Clear up locks and links if $objName exists
+    upvar 1 $objName objVar
+    if {[info exists objVar]} {
+        unlock objVar
+        unlink objVar; # Also unties the variable
     }
-    # Create traces on object variable
-    trace add variable linkVar {read write} "::vutil::LinkTrace $objName"
+    # Create traces on object variable and command
+    trace add variable objVar {read write} "::vutil::LinkTrace $objName"
+    trace add command $objName delete ::vutil::DestroyTrace
     # Return the name of the object
     return $objName
 }
@@ -336,8 +337,9 @@ proc ::vutil::unlink {args} {
         }
         untie refVar
         set objName $refVar
-        upvar 1 $objName linkVar
-        trace remove variable linkVar {read write} "::vutil::LinkTrace $objName"
+        upvar 1 $objName objVar
+        trace remove variable objVar {read write} "::vutil::LinkTrace $objName"
+        trace remove command $objName delete ::vutil::DestroyTrace
     }
     return
 }
@@ -356,26 +358,37 @@ proc ::vutil::unlink {args} {
 # op            Operation (read or write)
 
 proc ::vutil::LinkTrace {objName varName index op} {
-    upvar 1 $varName linkVar
+    upvar 1 $varName objVar
     switch $op {
         read { # Get value from object
-            set linkVar [$objName]
+            set objVar [$objName]
         }
         write { # Assign value to object
-            $objName = $linkVar
+            $objName = $objVar
         }
     }
+}
+
+# DestroyTrace --
+#
+# Tracer that destroys the object variable (and thus all traces)
+#
+# Arguments:
+# objName       Object name
+# args          Unused
+
+proc ::vutil::DestroyTrace {objName args} {
+    catch {unset $objName}
 }
 
 # obj --
 #
 # Class for object variables that store a value and have garbage collection
 #
-# $obj <value>          # Get object value
+# $obj                  # Get object value
 # $obj info <$key>      # Get object info array (or single value)
 # $obj = $value         # Value assignment
-# $obj1 <- $obj2        # Direct assignment (must be same class)
-# $obj1 -> $obj2        # Direct assignment (must be same class)
+# $obj1 <- $obj2        # Object assignment (must be same class)
 # $obj --> $varName     # Copy object (and set up tie/link)
 #
 # Arguments:
@@ -392,9 +405,9 @@ proc ::vutil::LinkTrace {objName varName index op} {
                     "obj create name varName ??=? value | <- object?"
         }
         # Initialize object
-        ::vutil::default (type) obj; # Default type
-        ::vutil::default (value) ""; # Default value (blank)
-        if {[llength $args] == 1} {
+        if {[llength $args] == 0} {
+            set (value) [my DefaultValue]
+        } elseif {[llength $args] == 1} {
             # obj new $varName $value
             my = [lindex $args 0]; # Assign value
         } elseif {[llength $args] == 2} {
@@ -410,6 +423,10 @@ proc ::vutil::LinkTrace {objName varName index op} {
         upvar 1 $varName refVar
         ::vutil::link refVar [self]
     }
+    
+    # DefaultValue --
+    # Method to get default value. Override when creating data types.
+    method DefaultValue {} {return}
     
     # Destroy value link
     destructor {
@@ -437,7 +454,7 @@ proc ::vutil::LinkTrace {objName varName index op} {
         }
     }
     
-    # value () --
+    # GetValue () --
     #
     # Object value query 
     #
@@ -445,12 +462,12 @@ proc ::vutil::LinkTrace {objName varName index op} {
     # my GetValue
     # $obj
     
-    method value {} {
+    method GetValue {} {
         return $(value)
     }
     method unknown {args} {
         if {[llength $args] == 0} {
-            tailcall my value
+            tailcall my GetValue
         }
         next {*}$args
     }
@@ -488,54 +505,20 @@ proc ::vutil::LinkTrace {objName varName index op} {
     # Arguments:
     # obj1, obj2    Objects of same class
 
-    method SetObject {object} {
-        my SameClass $object
-        $object -> [self]
+    method SetObject {objName} {
+        if {![info object isa object $objName]} {
+            return -code error "$objName is not an object"
+        }
+        if {![info object class $objName [info object class [self]]]} {
+            return -code error "$objName not of same class as [self]"
+        }
+        array set "" [$objName info]
+        self
     }
-    method <- {object} {
-        tailcall my SetObject $object
+    method <- {objName} {
+        tailcall my SetObject $objName
     }
     export <-
-    
-    # ObjectSet (->) --
-    #
-    # Left-to-right direct assignment (must be same class)
-    #
-    # Syntax:
-    # my ObjectSet $obj
-    # $obj1 -> $obj2
-    #
-    # Arguments:
-    # obj1, obj2    Objects of same class
-    
-    method ObjectSet {object} {
-        my SameClass $object
-        array set "" [$object info]
-        return [self]
-    }
-    method -> {object} {
-        tailcall my ObjectSet $object
-    }
-    export ->
-    
-    # SameClass --
-    #
-    # Ensure that the direct assignment is between objects of the same class
-    # 
-    # Syntax:
-    # my SameClass $object
-    #
-    # Arguments:
-    # object        Other object to check
-    
-    method SameClass {object} {
-        if {![info object isa object $object]} {
-            return -code error "$object is not an object"
-        }
-        if {![info object class $object [info object class [self]]]} {
-            return -code error "$object not of same class as [self]"
-        }
-    }
     
     # CopyObject (-->) --
     #
@@ -597,6 +580,7 @@ proc ::vutil::LinkTrace {objName varName index op} {
     }
 }
 
+
 # new --
 #
 # Create a new object variable (with type)
@@ -608,6 +592,8 @@ proc ::vutil::new {type varName args} {
 }
 
 # Define basic datatypes
+# obj (no meta data)
+::vutil::type add obj ::vutil::obj; # Add basic object type
 
 # string
 ::vutil::type new string {
@@ -650,6 +636,7 @@ proc ::vutil::new {type varName args} {
 
 # double (automatically uses expr)
 ::vutil::type new double {
+    method DefaultValue {} {return 0.0}
     method SetValue {args} {
         if {[llength $args] > 0} {
             next [::tcl::mathfunc::double [uplevel 1 expr $args]]
@@ -659,6 +646,7 @@ proc ::vutil::new {type varName args} {
 
 # int (automatically uses expr)
 ::vutil::type new int {
+    method DefaultValue {} {return 0}
     method SetValue {args} {
         set value [uplevel 1 expr $args]
         if {![string is integer -strict $value]} {
@@ -666,6 +654,7 @@ proc ::vutil::new {type varName args} {
         }
         next $value
     }
+    # Add increment operator
     method += {{incr 1}} {
         incr (value) $incr
     }
