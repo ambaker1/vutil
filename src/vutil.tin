@@ -273,15 +273,15 @@ proc ::vutil::TieTrace {objName varName index op} {
 
 # link --
 #
-# Link an obj to a variable for garbage collection
-# Puts a tie on varName, and traces on variable with same name as object.
-# This allows for manipulation of obj variables with normal Tcl commands.
+# Link an object to a variable of the same name.
+# Unsetting the object variable only destroys the link.
+# Destroying the object destroys the object variable.
 #
 # Syntax:
 # link $objName
 #
 # Arguments:
-# objName       Object name. Default value of "$varName"
+# objName       Object to link
 
 proc ::vutil::link {objName} {
     # Verify object
@@ -295,8 +295,10 @@ proc ::vutil::link {objName} {
         unlink $objName
     }
     # Create traces on object variable and command
-    trace add variable $objName {read write} [list ::vutil::LinkTrace $objName]
-    trace add command $objName delete ::vutil::DestroyTrace
+    trace add variable $objName read [list ::vutil::ReadLink $objName]
+    trace add variable $objName write [list ::vutil::WriteLink $objName]
+    trace add variable $objName unset [list ::vutil::UnsetLink $objName]
+    trace add command $objName {rename delete} ::vutil::ObjectLink
     # Return the name of the object
     return $objName
 }
@@ -319,50 +321,44 @@ proc ::vutil::unlink {args} {
         if {![info exists $objName]} {
             return -code error "can't unlink \"$objName\": no such object"
         }
-        trace remove variable $objName {read write} \
-                [list ::vutil::LinkTrace $objName]
-        trace remove command $objName delete ::vutil::DestroyTrace
+        trace remove variable $objName read [list ::vutil::ReadLink $objName]
+        trace remove variable $objName write [list ::vutil::WriteLink $objName]
+        trace remove variable $objName unset [list ::vutil::UnsetLink $objName]
+        trace remove command $objName {rename delete} ::vutil::ObjectLink
     }
     return
 }
 
-# LinkTrace --
-#
-# Link trace command for object variables
-#
-# Syntax:
-# LinkTrace $objName $varName $index $op
-#
-# Arguments:
-# objName       Object name
-# varName       Variable name linked to object
-# index         Index of array, or new name (unused)
-# op            Operation (read or write)
+# ReadLink --
+# Set the object variable equal to the object value.
 
-proc ::vutil::LinkTrace {objName varName index op} {
-    upvar 1 $varName objVar
-    switch $op {
-        read { # Get value from object
-            set objVar [$objName]
-        }
-        write { # Assign value to object
-            $objName = $objVar
-        }
-    }
-    return
+proc ::vutil::ReadLink {objName args} {
+    set $objName [$objName]
 }
 
-# DestroyTrace --
-#
-# Tracer that destroys the object variable (and thus all traces)
-#
-# Arguments:
-# objName       Object name
-# args          Unused
+# WriteLink --
+# Set the object value equal to the object variable value.
 
-proc ::vutil::DestroyTrace {objName args} {
-    catch {unset $objName}
-    return
+proc ::vutil::WriteLink {objName args} {
+    $objName = [set $objName]
+}
+
+# UnsetLink --
+# Destroy the object
+
+proc ::vutil::UnsetLink {objName args} {
+    $objName destroy
+}
+
+# ObjectLink --
+# Unset the object variable (which destroys the variable traces)
+
+proc ::vutil::ObjectLink {objName newName args} {
+    unset $objName; # Destroys variable and var traces (and command traces)
+    if {$newName ne ""} {
+        # Renaming to newName. Relink.
+        link $newName
+    }
 }
 
 # obj --
@@ -440,7 +436,7 @@ proc ::vutil::DestroyTrace {objName args} {
     
     method GetValue {} {
         if {![info exists (value)]} {
-            return -code error "can't read [self], no such variable"
+            return -code error "can't read \"[self]\", no such variable"
         }
         return $(value)
     }
@@ -491,8 +487,9 @@ proc ::vutil::DestroyTrace {objName args} {
         if {![info object class $objName [info object class [self]]]} {
             return -code error "$objName not of same class as [self]"
         }
+        # Set the object info array equal to the other one.
         array set "" [$objName info]
-        self
+        return [self]
     }
     method <- {objName} {
         tailcall my SetObject $objName
@@ -514,7 +511,7 @@ proc ::vutil::DestroyTrace {objName args} {
     
     method CopyObject {varName args} {
         upvar 1 $varName refVar
-        ::vutil::link refVar [::oo::copy [self] {*}$args]]
+        ::vutil::link [::vutil::tie refVar [::oo::copy [self] {*}$args]]
     }
     method --> {varName args} {
         tailcall my CopyObject $varName
@@ -614,7 +611,6 @@ proc ::vutil::new {type varName args} {
 
 # double (automatically uses expr)
 ::vutil::type new double {
-    method DefaultValue {} {return 0.0}
     method SetValue {args} {
         if {[llength $args] > 0} {
             next [::tcl::mathfunc::double [uplevel 1 expr $args]]
@@ -624,7 +620,6 @@ proc ::vutil::new {type varName args} {
 
 # int (automatically uses expr)
 ::vutil::type new int {
-    method DefaultValue {} {return 0}
     method SetValue {args} {
         set value [uplevel 1 expr $args]
         if {![string is integer -strict $value]} {
