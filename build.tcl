@@ -26,19 +26,36 @@ c(2) = 6
 d(1) = hello}
 
 pvar a b c d(1); # for display
+unset a b c d
 
 test local {
     # Test to see if local variables are created
 } -body {
-    namespace eval foo {
+    global a b c
+    set a 1
+    set b 2
+    set c 3
+    namespace eval ::foo {
         local a b c
+        set a 4
+        set b 5
+        set c 6
     }
-    info vars foo::*
-} -result {::foo::a ::foo::b ::foo::c}
+    proc ::foo::bar1 {} {
+        global a b c
+        list $a $b $c
+    }
+    proc ::foo::bar2 {} {
+        local a b c
+        list $a $b $c
+    }
+    list [::foo::bar1] [::foo::bar2]
+} -result {{1 2 3} {4 5 6}}
 
 test default1 {
     # The variable "a" does not exist. "default" sets it.
 } -body {
+    unset a
     default a 5
 } -result {5}
 
