@@ -57,7 +57,7 @@ proc ::vutil::PrintVars {args} {
 
 # local --
 #
-# Define variables local to the namespace of the procedure or code.
+# Define local variables that reference variables in the current namespace.
 # Simply calls "variable" multiple times in the calling scope.
 #
 # Syntax:
