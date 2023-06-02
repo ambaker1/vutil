@@ -1,7 +1,6 @@
 # vutil.tcl
 ################################################################################
-# Advanced variable manipulation commands for Tcl
-# Object variable class and garbage collection
+# Utilities for working with variables in Tcl
 
 # Copyright (C) 2023 Alex Baker, ambaker1@mtu.edu
 # All rights reserved. 
@@ -9,21 +8,72 @@
 # See the file "LICENSE" for information on usage, redistribution, and for a 
 # DISCLAIMER OF ALL WARRANTIES.
 ################################################################################
+
 # Dependencies
 package require errmsg 0.4
 
 # Define namespace
 namespace eval ::vutil {
-    # Internal variables
-    variable types
     # Exported Commands
     namespace export pvar; # Print variables and their values
     namespace export local; # Access local namespace variables (like global)
     namespace export default; # Set a variable if it does not exist
     namespace export lock unlock; # Hard set a Tcl variable
     namespace export tie untie; # Tie a Tcl variable to a Tcl object
-    namespace export link unlink; # Link an object to a variable with same name
-    namespace export obj type new; # Object variable class and type
+    namespace export link unlink; # Create an object variable
+    namespace export obj type new; # Object variable class and types
+}
+
+# pvar --
+#
+# Same idea as parray. Prints the values of a variable to screen.
+#
+# Syntax:
+# pvar $varName ...
+#
+# Arguments:
+# $varName ...      Names of variable to print
+
+proc ::vutil::pvar {args} {
+    puts [uplevel 1 [list ::vutil::PrintVars {*}$args]]
+}
+
+# PrintVars --
+#
+# Private procedure for testing (returns what is printed with "pvar")
+
+proc ::vutil::PrintVars {args} {
+    foreach varName $args {
+        upvar 1 $varName var
+        if {![info exists var]} {
+            return -code error "can't read \"$varName\": no such variable"
+        } elseif {[array exists var]} {
+            foreach {key value} [array get var] {
+                lappend varList [list "$varName\($key\)" = $value]
+            }
+        } else {
+            lappend varList [list $varName = $var]
+        }
+    }
+    join $varList \n
+}
+
+# local --
+#
+# Define variables local to the namespace of the procedure or code.
+# Simply calls "variable" multiple times in the calling scope.
+#
+# Syntax:
+# local $varName ...
+#
+# Arguments:
+# varName       Variable to access within namespace.
+
+proc ::vutil::local {args} {
+    foreach varName $args {
+        uplevel 1 [list variable $varName]
+    }
+    return
 }
 
 # pvar --
@@ -361,12 +411,27 @@ proc ::vutil::ObjectLink {objName newName args} {
     }
 }
 
+# InitObj --
+# Tracer to handle access error messages for object variables
+
+proc ::vutil::InitObj {objName arrayName key op} {
+    upvar 1 $arrayName ""
+    pause
+    if {![info exists ($key)]} {
+        # If not initialized, throw DNE error.
+        return -code error "can't read \"$objName\", no such variable"
+    } elseif {$op eq {write} && $key eq {value}}  {
+        # If writing to (value), remove the tracer and set (exists) to true
+        trace remove variable "" {read write} [list ::vutil::InitObj $objName]
+        set (exists) 1
+    }
+}
+
 # obj --
 #
 # Class for object variables that store a value and have garbage collection
 #
 # $obj                  # Get object value
-# $obj                  # Whether object value exists
 # $obj info <$key>      # Get object info array (or single value)
 # $obj = $value         # Value assignment
 # $obj1 <- $obj2        # Object assignment (must be same class)
@@ -386,10 +451,15 @@ proc ::vutil::ObjectLink {objName newName args} {
                     "obj create name varName ??=? value | <- object?"
         }
         # Initialize object
-        array set "" ""
+        set (type) [my Type]
+        set (exists) 0; # Initialize
+        # Set up initialization tracer
+        trace add variable "" {read write} [list ::vutil::InitObj [self]]
+        # Interpret input
         if {[llength $args] == 1} {
             # obj new $varName $value
             my = [lindex $args 0]; # Assign value
+            set (exists) 1
         } elseif {[llength $args] == 2} {
             # obj new $varName = $value
             # obj new $varName <- $object
@@ -405,9 +475,14 @@ proc ::vutil::ObjectLink {objName newName args} {
         return
     }
     
+    # Type --
+    # Returns the type of object. Overwritten by "type add"
+    method Type {} {}
+    
     # info --
     #
     # Get meta data on object
+    # Always has (exists) and (type), if (exists), has (value)
     #
     # Syntax:
     # $obj info <$key>
@@ -428,7 +503,7 @@ proc ::vutil::ObjectLink {objName newName args} {
     
     # GetValue (unknown) --
     #
-    # Object value query 
+    # Object value query (returns value).
     #
     # Syntax:
     # my GetValue
@@ -436,7 +511,7 @@ proc ::vutil::ObjectLink {objName newName args} {
     
     method GetValue {} {
         if {![info exists (value)]} {
-            return -code error "can't read \"[self]\", no such variable"
+            
         }
         return $(value)
     }
@@ -452,6 +527,7 @@ proc ::vutil::ObjectLink {objName newName args} {
     #
     # Value assignment (uses private method "SetValue"). 
     # Modify "SetValue" to add data validation and add metadata.
+    # Returns object name
     #
     # Syntax:
     # my SetValue $value
@@ -463,9 +539,10 @@ proc ::vutil::ObjectLink {objName newName args} {
     
     method SetValue {value} {
         set (value) $value
+        return [self]
     }
-    method = {value} {
-        tailcall my SetValue $value
+    method = {args} {
+        tailcall my SetValue {*}$args
     }
     export =
   
@@ -491,8 +568,8 @@ proc ::vutil::ObjectLink {objName newName args} {
         array set "" [$objName info]
         return [self]
     }
-    method <- {objName} {
-        tailcall my SetObject $objName
+    method <- {objName args} {
+        tailcall my SetObject $objName {*}$args
     }
     export <-
     
@@ -514,20 +591,21 @@ proc ::vutil::ObjectLink {objName newName args} {
         ::vutil::link [::vutil::tie refVar [::oo::copy [self] {*}$args]]
     }
     method --> {varName args} {
-        tailcall my CopyObject $varName
+        tailcall my CopyObject $varName {*}$args
     }
     export -->
 }
 
 # type --
 #
-# Class to create types
+# Class that creates obj types
 
 ::oo::class create ::vutil::type {
     superclass ::oo::class
     constructor {type args} {
+        # Rename class
+        rename [self] ::vutil::type::$type
         oo::define [self] superclass ::vutil::obj
-        oo::define [self] variable ""
         next {*}$args
         [self class] add $type [self]
     }
@@ -536,6 +614,7 @@ proc ::vutil::ObjectLink {objName newName args} {
     variable typeClass
     method add {type class} {
         set typeClass($type) $class
+        ::oo::define $class method Type {} [list return $type]
     }
     method remove {type} {
         if {[my exists $type]} {
@@ -554,6 +633,7 @@ proc ::vutil::ObjectLink {objName newName args} {
         }
         return $typeClass($type)
     }
+    unexport create; # Only allow "new"
 }
 
 # new --
@@ -566,8 +646,18 @@ proc ::vutil::new {type varName args} {
     tailcall [type class $type] new $varName {*}$args
 }
 
-# Define basic datatypes
-# obj (no meta data)
+# BASIC OBJECT TYPES
+################################################################################
+
+# Define namespace for type classes
+namespace eval ::vutil::type {}
+
+# new obj --
+#
+# Blank object, no meta data.
+#
+# 
+
 ::vutil::type add obj ::vutil::obj; # Add basic object type
 
 # string
@@ -576,10 +666,17 @@ proc ::vutil::new {type varName args} {
         set (length) [string length $value]
         next $value
     }
+    method length {} {
+        return $(length)
+    }
+    method @ {i} {
+        string index $(value) $i
+    }
+    export @
 }
 
 # list (length is llength)
-# unknown does indexing/setting
+# @ does indexing/setting
 ::vutil::type new list {
     method SetValue {value} {
         if {[catch {llength $value} length]} {
@@ -589,24 +686,47 @@ proc ::vutil::new {type varName args} {
         next $value
     }
     method length {} {
+        # pause
+        puts [info frame 0]
         return $(length)
     }
-    method unknown {args} {
-        try {
-            if {[lindex $args end-1] eq "="} {
-                # $list $i .. = $value
-                lset (value) {*}[lrange $args 0 end-2] [lindex $args end]
-                set (length) [llength $(value)]
-                return
-            } else {
-                # $list $i ..
-                return [lindex $(value) {*}$args]
-            }
-        } on error {result options} {
-            next {*}$args
+    method @ {args} {
+        if {[llength $args] > 3 && [lindex $args end-1] eq "="} {
+            # $list @ $i ?$i ...? = $value
+            lset (value) {*}[lrange $args 0 end-2] [lindex $args end]
+            set (length) [llength $(value)]
+            return [self]
+        } else {
+            # $list @ ?$i ...?
+            return [lindex $(value) {*}$args]
         }
     }
-    unexport unknown
+    export @
+}
+
+::vutil::type new dict {
+    method SetValue {value} {
+        if {[catch {dict size $value} size]} {
+            return -code error "input is not a dict"
+        }
+        set (size) $size
+        next $value
+    }
+    method size {} {
+        return $(size)
+    }
+    method @ {args} {
+        if {[llength $args] > 3 && [lindex $args end-1] eq "="} {
+            # $dict @ $key ?$key ...? = $value
+            dict set (value) {*}[lrange $args 0 end-2] [lindex $args end]
+            set (size) [dict size $(value)]
+            return [self]
+        } else {
+            # $dict @ ?$key ...?
+            return [dict get $(value) {*}$args]
+        }
+    }
+    export @
 }
 
 # double (automatically uses expr)
@@ -633,6 +753,7 @@ proc ::vutil::new {type varName args} {
     }
     export +=
 }
+
 
 # Finally, provide the package
 package provide vutil @VERSION@

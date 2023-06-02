@@ -21,6 +21,45 @@
 This package provides various utilities for working with variables in Tcl.
 \end{center}
 \end{abstract}
+
+
+\section{Initializing/Accessing Local Variables}
+The command \cmdlink{local} has the same syntax as the Tcl command \textit{global}, but instead of making global variables available in a procedure, it simply calls the Tcl command \textit{variable} multiple times to create the local namespace variables.
+\begin{syntax}
+\command{local} <\$varName ...>
+\end{syntax} 
+\begin{args}
+\$varName ... & Name(s) of namespace variables to access within the procedure
+\end{args}
+
+\section{Printing Variables to Screen} 
+The \cmdlink{pvar} command is a short-hand function for printing the name and value of Tcl variables, including arrays (like \textit{parray})
+\begin{syntax}
+\command{pvar} \$varName ...
+\end{syntax}
+\begin{args}
+\$varName ... & Name(s) of variables to print
+\end{args}
+\begin{example}{Printing variables to screen}
+\begin{lstlisting}
+set a 5
+set b 7
+set c(1) 5
+set c(2) 6
+set d(1) hello
+set d(2) world
+pvar a b c d(1)
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+a = 5
+b = 7
+c(1) = 5
+c(2) = 6
+d(1) = hello
+\end{lstlisting}
+\end{example}
+
 \clearpage
 \section{Printing Variables to Screen} 
 The \cmdlink{pvar} command is a short-hand function for printing the name and values of Tcl variables.
@@ -198,3 +237,33 @@ invalid command name "::bar"
 \end{lstlisting}
 \end{example}
 \end{document}
+
+\clearpage
+\section{Object Variable Class}
+The \cmdlink{obj} TclOO class creates container objects tied to variables, making garbage collection easy. 
+It is a simple 
+
+
+\clearpage
+\section{Interactive Workspace Viewer} 
+The command \cmdlink{viewVars} creates an interactive table of variables and their values. 
+Variables cannot be edited in the variable viewer window, but their values can be selected and copied. 
+This command in particular requires the packages ``Tk'' and ``Tktable''.
+\begin{syntax}
+\command{viewVars} <\$varList>
+\end{syntax}
+\begin{args}
+\$varList & Variables to view. Default uses the result of the Tcl command \textit{info vars}.
+\end{args}
+\begin{example}{Workspace viewer}
+\begin{lstlisting}
+set a 5
+set b 7
+set c(1) 5
+set c(2) 6
+viewVars
+\end{lstlisting}
+\tcblower
+
+\includegraphics{figures/workspace.png}
+\end{example}
