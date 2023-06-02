@@ -1,5 +1,6 @@
 package require tin 0.6
 tin import tcltest
+tin import errmsg
 set version 0.3
 set config [dict create VERSION $version]
 tin bake src build $config
@@ -168,17 +169,25 @@ test tie-trace-count {
     llength [trace info variable a]
 } -result {1}
 
+
+tin import flytrap
+
+obj new x
+new list y
+$y length
+pause
+
 test obj_new {
     Create an object with automatic name
 } -body {
-    obj new a foo
+    obj new a = foo
     $a
 } -result {foo}
 
 test obj_create {
     Create an object with name
 } -body {
-    obj create myObj b foo
+    obj create myObj b = foo
     list [myObj] [$b]
 } -result {foo foo}
 
@@ -186,7 +195,7 @@ test obj_gc {
     Ensure that objects are deleted inside procedures (garbage collection)
 } -body {
     proc foo {value} {
-        obj new a $value
+        obj new a = $value
         return $a
     }
     info object isa object [foo hi]
@@ -196,7 +205,7 @@ test obj_gc2 {
     Pass values from objects
 } -body {
     proc foo {value} {
-        obj new x $value
+        obj new x = $value
         return [$x]
     }
     foo hi
@@ -206,14 +215,21 @@ test obj_assignment {
     Assign values
 } -body {
     obj new x
-    $x <- {hello world}
+    $x = {hello world}
     $x
 } -result {hello world}
 
 test obj_copy {
     Copy object
 } -body {
-    $x -> y
+    $x --> y
+    $y
+} -result {hello world}
+
+test obj_copy2 {
+    Copy object contents into existing
+} -body {
+    $x <- $y
     $y
 } -result {hello world}
 
@@ -224,6 +240,38 @@ test obj_copygc {
     unset y; # Destroys object
     info object isa object $z
 } -result {0}
+
+test obj_set {
+    Ensure that the value can be set easily
+} -body {
+    set $x 10
+    $x
+} -result {10}
+
+# test obj_create {
+    # Ensure that there are no issues with creating named variables
+# } -body {
+    # obj create x x = foo
+    # set x bar
+    # list [x] $x
+# } -result {bar bar}
+
+# new list x = {1 2 3}
+# puts [$x info]
+
+
+
+type new list {
+    method SetValue {value} {
+        set (length) [llength $value]
+        next $value
+    }
+}
+
+new list x = {1 2 3}
+puts [$x info]
+
+pause
 
 # Check number of failed tests
 set nFailed $::tcltest::numTests(Failed)
