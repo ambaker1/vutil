@@ -8,15 +8,69 @@
 # See the file "LICENSE" for information on usage, redistribution, and for a 
 # DISCLAIMER OF ALL WARRANTIES.
 ################################################################################
-
-package require errmsg 0.2
+# Dependencies
+package require errmsg 0.4
 
 # Define namespace
 namespace eval ::vutil {
     # Exported Commands
+    namespace export pvar; # Print variables and their values
+    namespace export local; # Access local namespace variables (like global)
     namespace export default; # Set a variable if it does not exist
     namespace export lock unlock; # Hard set a Tcl variable
     namespace export tie untie; # Tie a Tcl variable to a Tcl object
+}
+
+# pvar --
+#
+# Same idea as parray. Prints the values of a variable to screen.
+#
+# Syntax:
+# pvar $varName ...
+#
+# Arguments:
+# $varName ...      Names of variable to print
+
+proc ::vutil::pvar {args} {
+    puts [uplevel 1 [list ::vutil::PrintVars {*}$args]]
+}
+
+# PrintVars --
+#
+# Private procedure for testing (returns what is printed with "pvar")
+
+proc ::vutil::PrintVars {args} {
+    foreach varName $args {
+        upvar 1 $varName var
+        if {![info exists var]} {
+            return -code error "can't read \"$varName\": no such variable"
+        } elseif {[array exists var]} {
+            foreach {key value} [array get var] {
+                lappend varList [list "$varName\($key\)" = $value]
+            }
+        } else {
+            lappend varList [list $varName = $var]
+        }
+    }
+    join $varList \n
+}
+
+# local --
+#
+# Define variables local to the namespace of the procedure or code.
+# Simply calls "variable" multiple times in the calling scope.
+#
+# Syntax:
+# local $varName ...
+#
+# Arguments:
+# varName       Variable to access within namespace.
+
+proc ::vutil::local {args} {
+    foreach varName $args {
+        uplevel 1 [list variable $varName]
+    }
+    return
 }
 
 # default --
@@ -67,12 +121,11 @@ proc ::vutil::lock {varName args} {
     }
     # Remove any existing lock trace
     if {[info exists var]} {
-        uplevel 1 [list ::vutil::unlock $varName]
+        unlock var
     }
     # Set value and define lock trace
     set var $value
-    uplevel 1 [list trace add variable $varName write \
-                [list ::vutil::LockTrace $var]]
+    trace add variable var write [list ::vutil::LockTrace $value]
     return $value
 }
 
@@ -92,8 +145,8 @@ proc ::vutil::unlock {args} {
         if {![info exists var]} {
             return -code error "can't unlock \"$varName\": no such variable"
         }
-        uplevel 1 [list trace remove variable $varName write \
-                [list ::vutil::LockTrace $var]]
+        set value $var; # Current value
+        trace remove variable var write [list ::vutil::LockTrace $value]
     }
     return
 }
@@ -133,38 +186,37 @@ proc ::vutil::LockTrace {value varName index op} {
 # tie $varName <$object>
 #
 # Arguments:
-# varName:      Variable representing object
-# object:       Value to set, must be Tcl object command
+# varName       Variable representing object
+# objName       Name of Tcl object
 
 proc ::vutil::tie {varName args} {
-    upvar 1 $varName var
+    upvar 1 $varName refVar
     # Switch for arity (allow for self-tie)
     if {[llength $args] == 0} {
-        if {[info exists var]} {
-            set object $var
+        if {[info exists refVar]} {
+            set objName $refVar
         } else {
             return -code error "can't read \"$varName\": no such variable"
         }
     } elseif {[llength $args] == 1} {
-        set object [lindex $args 0]
+        set objName [lindex $args 0]
     } else {
-        ::errmsg::wrongNumArgs "tie varName ?object?"
+        ::errmsg::wrongNumArgs "tie varName ?objName?"
     }
     # Verify object
-    if {![info object isa object $object]} {
-        return -code error "\"$value\" is not an object"
+    if {![info object isa object $objName]} {
+        return -code error "\"$objName\" is not an object"
     }
     # Remove any existing lock and tie traces
-    if {[info exists var]} {
-        uplevel 1 [list ::vutil::unlock $varName]
-        uplevel 1 [list ::vutil::untie $varName]
+    if {[info exists refVar]} {
+        unlock refVar
+        untie refVar
     }
     # Set the value of the variable and add TieTrace
-    set var $object
-    uplevel 1 [list trace add variable $varName {write unset} \
-                [list ::vutil::TieTrace $object]]
+    set refVar $objName
+    trace add variable refVar {write unset} [list ::vutil::TieTrace $objName]
     # Return the value (like with "set")
-    return $object
+    return $objName
 }
 
 # untie --
@@ -179,13 +231,13 @@ proc ::vutil::tie {varName args} {
 
 proc ::vutil::untie {args} {
     foreach varName $args {
-        set varName [lindex $args 0]
-        upvar 1 $varName var
-        if {![info exists var]} {
+        upvar 1 $varName refVar
+        if {![info exists refVar]} {
             return -code error "can't untie \"$varName\": no such variable"
         }
-        uplevel 1 [list trace remove variable $varName {write unset} \
-                [list ::vutil::TieTrace $var]]
+        set objName $refVar
+        trace remove variable refVar {write unset} \
+                [list ::vutil::TieTrace $objName]
     }
     return
 }
@@ -195,27 +247,24 @@ proc ::vutil::untie {args} {
 # Destroys associated Tcl object and removes ties
 #
 # Syntax:
-# TieTrace $object $varName $index $op
+# TieTrace $objName $varName $index $op
 #
 # Arguments:
-# object        Object to tie
 # varName       Variable (or array) name
 # index         Index of array if variable is array
 # op            Trace operation (unused)
 
-proc ::vutil::TieTrace {object varName index op} {
-    # Destroy object (with catch, in case it was already destroyed)
-    catch {$object destroy}
-    # Untie the variable
-    upvar 1 $varName var
-    if {[info exists var]} {
-        if {[array exists var]} {
-            uplevel 1 [list ::vutil::untie "$varName\($index\)"]
+proc ::vutil::TieTrace {objName varName index op} {
+    catch {$objName destroy}; # try to destroy object
+    upvar 1 $varName refVar
+    if {[info exists refVar]} {
+        if {[array exists refVar]} {
+            untie refVar($index)
         } else {
-            uplevel 1 [list ::vutil::untie $varName]
+            untie refVar
         }
     }
 }
 
 # Finally, provide the package
-package provide vutil 0.2
+package provide vutil 0.3
