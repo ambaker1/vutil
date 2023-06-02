@@ -8,6 +8,25 @@ tin bake doc/template/version.tin doc/template/version.tex $config
 source build/vutil.tcl
 namespace import vutil::*
 
+# Print variables
+test pvar {
+    # Test to make sure that pvar works
+} -body {
+    set a 5
+    set b 7
+    set c(1) 5
+    set c(2) 6
+    set d(1) hello
+    set d(2) world
+    ::vutil::PrintVars a b c d(1)
+} -result {a = 5
+b = 7
+c(1) = 5
+c(2) = 6
+d(1) = hello}
+
+pvar a b c d(1); # for display
+
 test local {
     # Test to see if local variables are created
 } -body {
