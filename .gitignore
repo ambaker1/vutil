@@ -1,4 +1,5 @@
 build/**
+working/**
 doc/**
 !doc/vutil.tex
 !doc/vutil.pdf

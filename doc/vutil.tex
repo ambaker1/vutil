@@ -17,26 +17,89 @@
 \begin{document}
 \maketitle
 \begin{abstract}
-When running a parametric study on an Tcl file, the parameters must be configured so that they can be modified from a top-level. 
-The simplest way to achieve this is by commenting-out lines which specify the parameter within the main file. 
-This package provides two additional methods:
-\begin{enumerate}
-\item \textbf{The default value method:} This method requires modification to the main file. 
-It simply assigns default values to variables if the variables do not exist.
-\item \textbf{The lock method:} This method requires no modification to the main file, it simply allows for variables to be set and locked. 
-Any attempts to set the variable will be reversed.
-\end{enumerate}
-Additionally, the vutil package provides garbage collection for TclOO objects, so that when a variable tied to an object goes out of scope or is modified, the corresponding object is destroyed.
+\begin{center}
+This package provides various utilities for working with variables in Tcl.
+\end{center}
 \end{abstract}
 \clearpage
-\section{Default Values}
-A common technique to handle default values is to use the \textit{info exists} command in Tcl. This method is formalized with the vutil command \cmdlink{default}, which simply assigns default values to variables if the variables do not exist. Variables set using the \cmdlink{default} command will be available to override from a top-level.
-
+\section{Printing Variables to Screen} 
+The \cmdlink{pvar} command is a short-hand function for printing the name and values of Tcl variables.
 \begin{syntax}
-\command{default} \$varname \$value
+\command{pvar} \$name1 \$name2 …
 \end{syntax}
 \begin{args}
-\$varname & Name of variable to set \\
+\$name1 \$name2 … & Name(s) of variables to print
+\end{args}
+
+\begin{example}{Printing variables to screen}
+\begin{lstlisting}
+set a 5
+set b 7
+set c(1) 5
+set c(2) 6
+pvar a b c
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+a = 5
+b = 7
+c(1) = 5
+c(2) = 6
+\end{lstlisting}
+\end{example}
+\clearpage
+\section{Initializing Local Namespace Variables}
+The command \cmdlink{local} is the counterpart to the Tcl \textit{global} command, and creates local variables linked to variables in the current namespace, by simply calling the Tcl \textit{variable} command multiple times.
+\begin{syntax}
+\command{local} \$name1 \$name2 …
+\end{syntax}
+\begin{args}
+\$name1 \$name2 … & Name(s) of variables to initialize
+\end{args}
+\begin{example}{Access namespace variables in a procedure}
+\begin{lstlisting}
+# Define global variables
+global a b c
+set a 1
+set b 2
+set c 3
+namespace eval ::foo {
+    # Define local variables
+    local a b c
+    set a 4
+    set b 5
+    set c 6
+}
+proc ::foo::bar1 {} {
+    # Access global variables
+    global a b c
+    list $a $b $c
+}
+proc ::foo::bar2 {} {
+    # Access local variables
+    local a b c
+    list $a $b $c
+}
+puts [::foo::bar1]; # global a b c
+puts [::foo::bar2]; # local a b c
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+1 2 3
+4 5 6
+\end{lstlisting}
+\end{example}
+
+\clearpage
+
+\section{Default Values}
+The command \cmdlink{default} assigns values to variables if they do not exist.
+
+\begin{syntax}
+\command{default} \$varName \$value
+\end{syntax}
+\begin{args}
+\$varName & Name of variable to set \\
 \$value & Default value for variable
 \end{args}
 
@@ -59,7 +122,7 @@ puts $a
 \end{example}
 \clearpage
 \section{Variable Locks}
-The lock method uses Tcl variable traces to prevent any further modification to variables while locked. This method does not require any modification of the main file. The main command for this method, \cmdlink{lock}, locks variables for editing. Any attempts to modify a locked variable will be reversed. 
+The command \cmdlink{lock} uses Tcl variable traces to make a read-only variable.
 
 \begin{syntax}
 \command{lock} \$varName <\$value>
@@ -72,10 +135,10 @@ The lock method uses Tcl variable traces to prevent any further modification to 
 The command \cmdlink{unlock} unlocks previously locked variables so that they can be modified again.
 
 \begin{syntax}
-\command{unlock} \$var1 \$var2 …
+\command{unlock} \$name1 \$name2 …
 \end{syntax}
 \begin{args}
-\$var1 \$var2 … & Variables to unlock.
+\$name1 \$name2 … & Variables to unlock.
 \end{args}
 
 \begin{example}{Variable locks}
@@ -111,10 +174,10 @@ Tie is separate from lock; a tie will override a lock, and a lock will override 
 In similar fashion to \cmdlink{unlock}, tied variables can be untied with the command \cmdlink{untie}.
 
 \begin{syntax}
-\command{untie} \$var1 \$var2 …
+\command{untie} \$name1 \$name2 …
 \end{syntax}
 \begin{args}
-\$var1 \$var2 … & Variables to untie.
+\$name1 \$name2 … & Variables to untie.
 \end{args}
 
 \begin{example}{Variable-object ties}
