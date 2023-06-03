@@ -362,16 +362,15 @@ proc ::vutil::ObjectLink {objName newName args} {
 # InitObj --
 # Tracer to handle access error messages for object variables
 
-proc ::vutil::InitObj {objName arrayName key op} {
+proc ::vutil::InitObj {objName arrayName args} {
     upvar 1 $arrayName ""
-    if {![info exists ($key)]} {
+    if {![info exists (value)]} {
         # If not initialized, throw DNE error.
         return -code error "can't read \"$objName\", no such variable"
-    } elseif {$op eq {write} && $key eq {value}}  {
-        # If writing to (value), remove the tracer and set (exists) to true
-        trace remove variable "" {read write} [list ::vutil::InitObj $objName]
-        set (exists) 1
     }
+    trace remove variable (value) {read write} [list ::vutil::InitObj $objName]
+    set (exists) 1
+    return
 }
 
 # obj --
@@ -401,12 +400,11 @@ proc ::vutil::InitObj {objName arrayName key op} {
         set (type) [my Type]
         set (exists) 0; # Initialize
         # Set up initialization tracer
-        trace add variable "" {read write} [list ::vutil::InitObj [self]]
+        trace add variable (value) {read write} [list ::vutil::InitObj [self]]
         # Interpret input
         if {[llength $args] == 1} {
             # obj new $varName $value
             my = [lindex $args 0]; # Assign value
-            set (exists) 1
         } elseif {[llength $args] == 2} {
             # obj new $varName = $value
             # obj new $varName <- $object
@@ -457,9 +455,6 @@ proc ::vutil::InitObj {objName arrayName key op} {
     # $obj
     
     method GetValue {} {
-        if {![info exists (value)]} {
-            
-        }
         return $(value)
     }
     method unknown {args} {
