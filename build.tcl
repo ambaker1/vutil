@@ -298,7 +298,6 @@ test new_int {
     }
     set values
 } -result {0 1 2 3 4 5 6 7 8 9}
-exit
 
 # Check number of failed tests
 set nFailed $::tcltest::numTests(Failed)
@@ -313,6 +312,8 @@ if {$nFailed > 0} {
 
 # Tests passed, copy build files to main folder and install
 file copy -force {*}[glob -directory build *] [pwd]
+
+exit
 exec tclsh install.tcl
 
 # Verify installation
