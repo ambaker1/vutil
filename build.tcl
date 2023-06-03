@@ -1,6 +1,6 @@
-package require tin 0.6
+package require tin 0.6.2
 tin import tcltest
-tin import errmsg
+tin import errm
 set version 0.3
 set config [dict create VERSION $version]
 tin bake src build $config
@@ -169,30 +169,22 @@ test tie-trace-count {
     llength [trace info variable a]
 } -result {1}
 
-
-tin import flytrap
-
-obj new x
-new list y
-$y length
-pause
-
 test obj_new {
-    Create an object with automatic name
+    # Create an object with automatic name
 } -body {
     obj new a = foo
     $a
 } -result {foo}
 
 test obj_create {
-    Create an object with name
+    # Create an object with name
 } -body {
     obj create myObj b = foo
     list [myObj] [$b]
 } -result {foo foo}
 
 test obj_gc {
-    Ensure that objects are deleted inside procedures (garbage collection)
+    # Ensure that objects are deleted inside procedures (garbage collection)
 } -body {
     proc foo {value} {
         obj new a = $value
@@ -202,7 +194,7 @@ test obj_gc {
 } -result {0}
 
 test obj_gc2 {
-    Pass values from objects
+    # Pass values from objects
 } -body {
     proc foo {value} {
         obj new x = $value
@@ -212,7 +204,7 @@ test obj_gc2 {
 } -result {hi}
 
 test obj_assignment {
-    Assign values
+    # Assign values
 } -body {
     obj new x
     $x = {hello world}
@@ -220,21 +212,21 @@ test obj_assignment {
 } -result {hello world}
 
 test obj_copy {
-    Copy object
+    # Copy object
 } -body {
     $x --> y
     $y
 } -result {hello world}
 
 test obj_copy2 {
-    Copy object contents into existing
+    # Copy object contents into existing
 } -body {
     $x <- $y
     $y
 } -result {hello world}
 
 test obj_copygc {
-    Ensure that garbage collection is set up on copied object
+    # Ensure that garbage collection is set up on copied object
 } -body {
     set z $y
     unset y; # Destroys object
@@ -242,36 +234,71 @@ test obj_copygc {
 } -result {0}
 
 test obj_set {
-    Ensure that the value can be set easily
+    # Ensure that the value can be set easily
 } -body {
     set $x 10
     $x
 } -result {10}
 
-# test obj_create {
-    # Ensure that there are no issues with creating named variables
-# } -body {
-    # obj create x x = foo
-    # set x bar
-    # list [x] $x
-# } -result {bar bar}
+test obj_dne {
+    # Create new object (does not exist)
+} -body {
+    new obj obj1
+    puts [info exists $obj1]
+    list [$obj1 info] [info exists $obj1]
+} -result {{exists 0 type obj} 0}
 
-# new list x = {1 2 3}
-# puts [$x info]
+test new_string {
+    # Test all features of "string" type
+} -body {
+    new string string1 = {hello world}
+    assert [$string1 length] == 11
+    $string1 info
+} -result {exists 1 length 11 type string value {hello world}}
 
+test new_list {
+    # Test all features of "list" type
+} -body {
+    new list list1 = {hello world}
+    assert [$list1 length] == 2
+    $list1 @ 0 = "hey"
+    $list1 @ 1 = "there"
+    $list1 @ end+1 = "world"
+    assert [$list1 @ end] eq "world"
+    $list1 info
+} -result {exists 1 length 3 type list value {hey there world}}
 
+test new_dict {
+    # Test all features of the "dict" type
+} -body {
+    new dict dict1
+    $dict1 set a 5
+    $dict1 set b 3
+    assert [$dict1 set c 5] eq $dict1
+    assert [$dict1 get a] eq 5
+    $dict1 info
+} -result {exists 1 size 3 type dict value {a 5 b 3 c 5}}
 
-type new list {
-    method SetValue {value} {
-        set (length) [llength $value]
-        next $value
+test new_double {
+    # Test all features of the "double" type
+} -body {
+    new double x = {2 + 2}
+    assert [$x] == 4
+    set a 5
+    $x = {[$x] * $a}
+    $x info
+} -result {exists 1 type double value 20.0}
+
+test new_int {
+    # Test all features of the "int" type
+} -body {
+    set values ""
+    for {new int i = 0} {[$i] < 10} {$i += 1} {
+        lappend values [$i]
     }
-}
-
-new list x = {1 2 3}
-puts [$x info]
-
-pause
+    set values
+} -result {0 1 2 3 4 5 6 7 8 9}
+exit
 
 # Check number of failed tests
 set nFailed $::tcltest::numTests(Failed)

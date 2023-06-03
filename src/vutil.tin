@@ -10,7 +10,7 @@
 ################################################################################
 
 # Dependencies
-package require errmsg 0.4
+package require errm 0.5
 
 # Define namespace
 namespace eval ::vutil {
@@ -76,58 +76,6 @@ proc ::vutil::local {args} {
     return
 }
 
-# pvar --
-#
-# Same idea as parray. Prints the values of a variable to screen.
-#
-# Syntax:
-# pvar $varName ...
-#
-# Arguments:
-# $varName ...      Names of variable to print
-
-proc ::vutil::pvar {args} {
-    puts [uplevel 1 [list ::vutil::PrintVars {*}$args]]
-}
-
-# PrintVars --
-#
-# Private procedure for testing (returns what is printed with "pvar")
-
-proc ::vutil::PrintVars {args} {
-    foreach varName $args {
-        upvar 1 $varName var
-        if {![info exists var]} {
-            return -code error "can't read \"$varName\": no such variable"
-        } elseif {[array exists var]} {
-            foreach {key value} [array get var] {
-                lappend varList [list "$varName\($key\)" = $value]
-            }
-        } else {
-            lappend varList [list $varName = $var]
-        }
-    }
-    join $varList \n
-}
-
-# local --
-#
-# Define local variables that reference variables in the current namespace.
-# Simply calls "variable" multiple times in the calling scope.
-#
-# Syntax:
-# local $varName ...
-#
-# Arguments:
-# varName       Variable to access within namespace.
-
-proc ::vutil::local {args} {
-    foreach varName $args {
-        uplevel 1 [list variable $varName]
-    }
-    return
-}
-
 # default --
 #
 # Soft set of a variable. Only sets the variable if it does not exist.
@@ -172,7 +120,7 @@ proc ::vutil::lock {varName args} {
     } elseif {[llength $args] == 1} {
         set value [lindex $args 0]
     } else {
-        ::errmsg::wrongNumArgs "lock varName ?value?"
+        ::errm::wrongNumArgs "lock varName ?value?"
     }
     # Remove any existing lock trace
     if {[info exists var]} {
@@ -256,7 +204,7 @@ proc ::vutil::tie {varName args} {
     } elseif {[llength $args] == 1} {
         set objName [lindex $args 0]
     } else {
-        ::errmsg::wrongNumArgs "tie varName ?objName?"
+        ::errm::wrongNumArgs "tie varName ?objName?"
     }
     # Verify object
     if {![info object isa object $objName]} {
@@ -416,7 +364,6 @@ proc ::vutil::ObjectLink {objName newName args} {
 
 proc ::vutil::InitObj {objName arrayName key op} {
     upvar 1 $arrayName ""
-    pause
     if {![info exists ($key)]} {
         # If not initialized, throw DNE error.
         return -code error "can't read \"$objName\", no such variable"
@@ -447,7 +394,7 @@ proc ::vutil::InitObj {objName arrayName key op} {
     constructor {varName args} {
         # Check arity
         if {[llength $args] > 2} {
-            ::errmsg::wrongNumArgs "obj new varName ??=? value | <- object?" \\
+            ::errm::wrongNumArgs "obj new varName ??=? value | <- object?" \\
                     "obj create name varName ??=? value | <- object?"
         }
         # Initialize object
@@ -465,7 +412,7 @@ proc ::vutil::InitObj {objName arrayName key op} {
             # obj new $varName <- $object
             lassign $args op value
             if {$op ni {= <-}} {
-                ::errmsg::unknownOption $op {= <-}
+                ::errm::unknownOption $op {= <-}
             }
             my $op $value
         }
@@ -493,11 +440,11 @@ proc ::vutil::InitObj {objName arrayName key op} {
     
     method info {{key ""}} {
         if {$key eq ""} {
-            return [array get ""]
+            return [lsort -stride 2 [array get ""]]
         } elseif {[info exists ($key)]} {
             return $($key)
         } else {
-            ::errmsg::unknownOption $key [lsort [array names ""]]
+            ::errm::unknownOption $key [lsort [array names ""]]
         }
     }
     
@@ -606,6 +553,7 @@ proc ::vutil::InitObj {objName arrayName key op} {
         # Rename class
         rename [self] ::vutil::type::$type
         oo::define [self] superclass ::vutil::obj
+        
         next {*}$args
         [self class] add $type [self]
     }
@@ -615,6 +563,7 @@ proc ::vutil::InitObj {objName arrayName key op} {
     method add {type class} {
         set typeClass($type) $class
         ::oo::define $class method Type {} [list return $type]
+        ::oo::define $class variable ""
     }
     method remove {type} {
         if {[my exists $type]} {
@@ -655,19 +604,19 @@ namespace eval ::vutil::type {}
 # new obj --
 #
 # Blank object, no meta data.
-#
-# 
-
 ::vutil::type add obj ::vutil::obj; # Add basic object type
 
-# string
+# new string --
+# length:   string length
+# @:        string index
+
 ::vutil::type new string {
-    method SetValue {value} {
-        set (length) [string length $value]
-        next $value
+    method info {args} {
+        set (length) [my length]
+        next {*}$args
     }
     method length {} {
-        return $(length)
+        string length $(value)
     }
     method @ {i} {
         string index $(value) $i
@@ -675,26 +624,26 @@ namespace eval ::vutil::type {}
     export @
 }
 
-# list (length is llength)
-# @ does indexing/setting
+# new list --
+# length    list length
+# @         list index/set
+
 ::vutil::type new list {
     method SetValue {value} {
-        if {[catch {llength $value} length]} {
-            return -code error "input is not a list"
-        }
-        set (length) $length
+        ::errm::assert $value is list
         next $value
     }
+    method info {args} {
+        set (length) [my length]
+        next {*}$args
+    }
     method length {} {
-        # pause
-        puts [info frame 0]
-        return $(length)
+        llength $(value)
     }
     method @ {args} {
-        if {[llength $args] > 3 && [lindex $args end-1] eq "="} {
+        if {[llength $args] >= 3 && [lindex $args end-1] eq "="} {
             # $list @ $i ?$i ...? = $value
             lset (value) {*}[lrange $args 0 end-2] [lindex $args end]
-            set (length) [llength $(value)]
             return [self]
         } else {
             # $list @ ?$i ...?
@@ -704,56 +653,57 @@ namespace eval ::vutil::type {}
     export @
 }
 
+# new dict --
+# size      dict size
+# set       dict set
+# get       dict get 
+
 ::vutil::type new dict {
     method SetValue {value} {
-        if {[catch {dict size $value} size]} {
-            return -code error "input is not a dict"
+        if {[catch {dict size $value}]} {
+            return -code error "expected dict value but got \"$value\""
         }
-        set (size) $size
         next $value
     }
+    method info {args} {
+        set (size) [my size]
+        next {*}$args
+    }
     method size {} {
-        return $(size)
+        dict size $(value)
     }
-    method @ {args} {
-        if {[llength $args] > 3 && [lindex $args end-1] eq "="} {
-            # $dict @ $key ?$key ...? = $value
-            dict set (value) {*}[lrange $args 0 end-2] [lindex $args end]
-            set (size) [dict size $(value)]
-            return [self]
-        } else {
-            # $dict @ ?$key ...?
-            return [dict get $(value) {*}$args]
-        }
+    method set {args} {
+        dict set (value) {*}$args
+        return [self]
     }
-    export @
+    method get {args} {
+        dict get $(value) {*}$args
+    }
 }
 
 # double (automatically uses expr)
 ::vutil::type new double {
-    method SetValue {args} {
-        if {[llength $args] > 0} {
-            next [::tcl::mathfunc::double [uplevel 1 expr $args]]
-        }
+    method SetValue {expr} {
+        set value [::tcl::mathfunc::double [uplevel 1 [list expr $expr]]]
+        next $value
     }
 }
 
 # int (automatically uses expr)
+# +=        increment by a value
 ::vutil::type new int {
-    method SetValue {args} {
-        set value [uplevel 1 expr $args]
-        if {![string is integer -strict $value]} {
-            return -code error "value must be integer"
-        }
+    method SetValue {expr} {
+        set value [uplevel 1 [list expr $expr]]
+        ::errm::assert $value is int
         next $value
     }
-    # Add increment operator
-    method += {{incr 1}} {
+    # Add increment operators
+    method += {incr} {
         incr (value) $incr
+        return [self]
     }
     export +=
 }
-
 
 # Finally, provide the package
 package provide vutil @VERSION@
