@@ -624,7 +624,9 @@ namespace eval ::vutil::type {}
 
 ::vutil::type new list {
     method SetValue {value} {
-        ::errm::assert $value is list
+        if {[catch {llength $value} result]} {
+            return -code error $result
+        }
         next $value
     }
     method info {args} {
