@@ -9,9 +9,6 @@
 # DISCLAIMER OF ALL WARRANTIES.
 ################################################################################
 
-# Dependencies
-package require errm 0.5
-
 # Define namespace
 namespace eval ::vutil {
     # Exported Commands
@@ -120,7 +117,7 @@ proc ::vutil::lock {varName args} {
     } elseif {[llength $args] == 1} {
         set value [lindex $args 0]
     } else {
-        ::errm::wrongNumArgs "lock varName ?value?"
+        return -code error "wrong # args: want \"lock varName ?value?\""
     }
     # Remove any existing lock trace
     if {[info exists var]} {
@@ -204,7 +201,7 @@ proc ::vutil::tie {varName args} {
     } elseif {[llength $args] == 1} {
         set objName [lindex $args 0]
     } else {
-        ::errm::wrongNumArgs "tie varName ?objName?"
+        return -code error "wrong # args: want \"tie varName ?objName?\""
     }
     # Verify object
     if {![info object isa object $objName]} {
@@ -362,16 +359,15 @@ proc ::vutil::ObjectLink {objName newName args} {
 # InitObj --
 # Tracer to handle access error messages for object variables
 
-proc ::vutil::InitObj {objName arrayName key op} {
+proc ::vutil::InitObj {objName arrayName args} {
     upvar 1 $arrayName ""
-    if {![info exists ($key)]} {
+    if {![info exists (value)]} {
         # If not initialized, throw DNE error.
         return -code error "can't read \"$objName\", no such variable"
-    } elseif {$op eq {write} && $key eq {value}}  {
-        # If writing to (value), remove the tracer and set (exists) to true
-        trace remove variable "" {read write} [list ::vutil::InitObj $objName]
-        set (exists) 1
     }
+    trace remove variable (value) {read write} [list ::vutil::InitObj $objName]
+    set (exists) 1
+    return
 }
 
 # obj --
@@ -394,25 +390,26 @@ proc ::vutil::InitObj {objName arrayName key op} {
     constructor {varName args} {
         # Check arity
         if {[llength $args] > 2} {
-            ::errm::wrongNumArgs "obj new varName ??=? value | <- object?" \\
-                    "obj create name varName ??=? value | <- object?"
+            return -code error "wrong # args: want \"obj new varName ??=?\
+                    value | <- object?\" or \"obj create name varName ??=?\
+                    value | <- object?"
         }
         # Initialize object
         set (type) [my Type]
         set (exists) 0; # Initialize
         # Set up initialization tracer
-        trace add variable "" {read write} [list ::vutil::InitObj [self]]
+        trace add variable (value) {read write} [list ::vutil::InitObj [self]]
         # Interpret input
         if {[llength $args] == 1} {
             # obj new $varName $value
             my = [lindex $args 0]; # Assign value
-            set (exists) 1
         } elseif {[llength $args] == 2} {
             # obj new $varName = $value
             # obj new $varName <- $object
             lassign $args op value
             if {$op ni {= <-}} {
-                ::errm::unknownOption $op {= <-}
+                return -code error "unknown assignment operator \"$op\":\
+                        want \"=\" or \"<-\""
             }
             my $op $value
         }
@@ -444,7 +441,7 @@ proc ::vutil::InitObj {objName arrayName key op} {
         } elseif {[info exists ($key)]} {
             return $($key)
         } else {
-            ::errm::unknownOption $key [lsort [array names ""]]
+            return -code error "unknown key \"$key\"" 
         }
     }
     
@@ -457,9 +454,6 @@ proc ::vutil::InitObj {objName arrayName key op} {
     # $obj
     
     method GetValue {} {
-        if {![info exists (value)]} {
-            
-        }
         return $(value)
     }
     method unknown {args} {
@@ -551,7 +545,7 @@ proc ::vutil::InitObj {objName arrayName key op} {
     superclass ::oo::class
     constructor {type args} {
         # Rename class
-        rename [self] ::vutil::type::$type
+        rename [self] ::vutil::type.$type
         oo::define [self] superclass ::vutil::obj
         
         next {*}$args
@@ -595,18 +589,57 @@ proc ::vutil::new {type varName args} {
     tailcall [type class $type] new $varName {*}$args
 }
 
-# BASIC OBJECT TYPES
+# BASIC DATA TYPES
 ################################################################################
-
-# Define namespace for type classes
-namespace eval ::vutil::type {}
 
 # new obj --
 #
 # Blank object, no meta data.
-::vutil::type add obj ::vutil::obj; # Add basic object type
+
+::vutil::type add obj ::vutil::obj
+
+# new double --
+#
+# Passes input through expr and mathfunc::double
+
+::vutil::type new double {
+    method SetValue {expr} {
+        next [::tcl::mathfunc::double [uplevel 1 [list expr $expr]]]
+    }
+}
+
+# new int --
+#
+# Passes input through expr and assert integer
+
+::vutil::type new int {
+    method SetValue {expr} {
+        set value [uplevel 1 [list expr $expr]]
+        if {![string is integer -strict $value]} {
+            return -code error "expected integer value but got \"$value\""
+        }
+        next $value
+    }
+}
+
+# new bool --
+#
+# Passes input through expr and assert boolean
+
+::vutil::type new bool {
+    method SetValue {expr} {
+        set value [uplevel 1 [list expr $expr]]
+        if {![string is boolean -strict $value]} {
+            return -code error "expected boolean value but got \"$value\""
+        }
+        next $value
+    }
+}
 
 # new string --
+#
+# Everything is a string. This type adds the "length" and "@" methods.
+# 
 # length:   string length
 # @:        string index
 
@@ -625,12 +658,18 @@ namespace eval ::vutil::type {}
 }
 
 # new list --
+#
+# Almost everything is a list. Asserts that input is a list.
+# This data type also has "length" and "@" methods.
+#
 # length    list length
 # @         list index/set
 
 ::vutil::type new list {
     method SetValue {value} {
-        ::errm::assert $value is list
+        if {[catch {llength $value} result]} {
+            return -code error $result
+        }
         next $value
     }
     method info {args} {
@@ -640,6 +679,15 @@ namespace eval ::vutil::type {}
     method length {} {
         llength $(value)
     }
+    
+    # @ --
+    #
+    # Method to get or set a value in a list
+    #
+    # Syntax:
+    # $list @ $i ?$i ...? = $value; # Returns object
+    # $list @ ?$i ...?; # Returns value
+    
     method @ {args} {
         if {[llength $args] >= 3 && [lindex $args end-1] eq "="} {
             # $list @ $i ?$i ...? = $value
@@ -656,12 +704,12 @@ namespace eval ::vutil::type {}
 # new dict --
 # size      dict size
 # set       dict set
-# get       dict get 
+# get       dict get
 
 ::vutil::type new dict {
     method SetValue {value} {
-        if {[catch {dict size $value}]} {
-            return -code error "expected dict value but got \"$value\""
+        if {[catch {dict size $value} result]} {
+            return -code error $result
         }
         next $value
     }
@@ -679,30 +727,6 @@ namespace eval ::vutil::type {}
     method get {args} {
         dict get $(value) {*}$args
     }
-}
-
-# double (automatically uses expr)
-::vutil::type new double {
-    method SetValue {expr} {
-        set value [::tcl::mathfunc::double [uplevel 1 [list expr $expr]]]
-        next $value
-    }
-}
-
-# int (automatically uses expr)
-# +=        increment by a value
-::vutil::type new int {
-    method SetValue {expr} {
-        set value [uplevel 1 [list expr $expr]]
-        ::errm::assert $value is int
-        next $value
-    }
-    # Add increment operators
-    method += {incr} {
-        incr (value) $incr
-        return [self]
-    }
-    export +=
 }
 
 # Finally, provide the package
