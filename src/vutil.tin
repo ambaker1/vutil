@@ -9,9 +9,6 @@
 # DISCLAIMER OF ALL WARRANTIES.
 ################################################################################
 
-# Dependencies
-package require errm 0.5
-
 # Define namespace
 namespace eval ::vutil {
     # Exported Commands
@@ -120,7 +117,7 @@ proc ::vutil::lock {varName args} {
     } elseif {[llength $args] == 1} {
         set value [lindex $args 0]
     } else {
-        ::errm::wrongNumArgs "lock varName ?value?"
+        return -code error "wrong # args: want \"lock varName ?value?\""
     }
     # Remove any existing lock trace
     if {[info exists var]} {
@@ -204,7 +201,7 @@ proc ::vutil::tie {varName args} {
     } elseif {[llength $args] == 1} {
         set objName [lindex $args 0]
     } else {
-        ::errm::wrongNumArgs "tie varName ?objName?"
+        return -code error "wrong # args: want \"tie varName ?objName?\""
     }
     # Verify object
     if {![info object isa object $objName]} {
@@ -394,8 +391,9 @@ proc ::vutil::InitObj {objName arrayName key op} {
     constructor {varName args} {
         # Check arity
         if {[llength $args] > 2} {
-            ::errm::wrongNumArgs "obj new varName ??=? value | <- object?" \\
-                    "obj create name varName ??=? value | <- object?"
+            return -code error "wrong # args: want \"obj new varName ??=?\
+                    value | <- object?\" or \"obj create name varName ??=?\
+                    value | <- object?"
         }
         # Initialize object
         set (type) [my Type]
@@ -412,7 +410,8 @@ proc ::vutil::InitObj {objName arrayName key op} {
             # obj new $varName <- $object
             lassign $args op value
             if {$op ni {= <-}} {
-                ::errm::unknownOption $op {= <-}
+                return -code error "unknown assignment operator \"$op\":\
+                        want \"=\" or \"<-\""
             }
             my $op $value
         }
@@ -444,7 +443,7 @@ proc ::vutil::InitObj {objName arrayName key op} {
         } elseif {[info exists ($key)]} {
             return $($key)
         } else {
-            ::errm::unknownOption $key [lsort [array names ""]]
+            return -code error "unknown key \"$key\"" 
         }
     }
     
