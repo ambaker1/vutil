@@ -545,7 +545,7 @@ proc ::vutil::InitObj {objName arrayName args} {
     superclass ::oo::class
     constructor {type args} {
         # Rename class
-        rename [self] ::vutil::type::$type
+        rename [self] ::vutil::type.$type
         oo::define [self] superclass ::vutil::obj
         
         next {*}$args
@@ -591,9 +591,6 @@ proc ::vutil::new {type varName args} {
 
 # BASIC OBJECT TYPES
 ################################################################################
-
-# Define namespace for type classes
-namespace eval ::vutil::type {}
 
 # new obj --
 #
