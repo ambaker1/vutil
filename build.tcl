@@ -1,6 +1,5 @@
-package require tin 0.6.2
+package require tin 0.7.2
 tin import tcltest
-tin import errm
 set version 0.3
 set config [dict create VERSION $version]
 tin bake src build $config
@@ -252,7 +251,7 @@ test new_string {
     # Test all features of "string" type
 } -body {
     new string string1 = {hello world}
-    assert [$string1 length] == 11
+    tin assert {[$string1 length] == 11}
     $string1 info
 } -result {exists 1 length 11 type string value {hello world}}
 
@@ -260,11 +259,11 @@ test new_list {
     # Test all features of "list" type
 } -body {
     new list list1 = {hello world}
-    assert [$list1 length] == 2
+    tin assert {[$list1 length] == 2}
     $list1 @ 0 = "hey"
     $list1 @ 1 = "there"
     $list1 @ end+1 = "world"
-    assert [$list1 @ end] eq "world"
+    tin assert {[$list1 @ end] eq "world"}
     $list1 info
 } -result {exists 1 length 3 type list value {hey there world}}
 
@@ -274,8 +273,8 @@ test new_dict {
     new dict dict1
     $dict1 set a 5
     $dict1 set b 3
-    assert [$dict1 set c 5] eq $dict1
-    assert [$dict1 get a] eq 5
+    tin assert {[$dict1 set c 5] eq $dict1}
+    tin assert {[$dict1 get a] == 5}
     $dict1 info
 } -result {exists 1 size 3 type dict value {a 5 b 3 c 5}}
 
@@ -283,7 +282,7 @@ test new_double {
     # Test all features of the "double" type
 } -body {
     new double x = {2 + 2}
-    assert [$x] == 4
+    tin assert {[$x] == 4}
     set a 5
     $x = {[$x] * $a}
     $x info
@@ -293,11 +292,23 @@ test new_int {
     # Test all features of the "int" type
 } -body {
     set values ""
-    for {new int i = 0} {[$i] < 10} {$i += 1} {
+    for {new int i = 0} {[$i] < 10} {incr $i} {
         lappend values [$i]
     }
     set values
 } -result {0 1 2 3 4 5 6 7 8 9}
+
+test new_bool {
+    # Test all features of the "bool" type
+} -body {
+    new bool flag = true
+    $flag = ![$flag]
+    if [$flag] {
+        return hi
+    } else {
+        return hey
+    }
+} -result {hey}
 
 # Check number of failed tests
 set nFailed $::tcltest::numTests(Failed)
@@ -313,7 +324,6 @@ if {$nFailed > 0} {
 # Tests passed, copy build files to main folder and install
 file copy -force {*}[glob -directory build *] [pwd]
 
-exit
 exec tclsh install.tcl
 
 # Verify installation
