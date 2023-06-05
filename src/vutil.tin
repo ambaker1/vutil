@@ -589,15 +589,57 @@ proc ::vutil::new {type varName args} {
     tailcall [type class $type] new $varName {*}$args
 }
 
-# BASIC OBJECT TYPES
+# BASIC DATA TYPES
 ################################################################################
 
 # new obj --
 #
 # Blank object, no meta data.
-::vutil::type add obj ::vutil::obj; # Add basic object type
+
+::vutil::type add obj ::vutil::obj
+
+# new double --
+#
+# Passes input through expr and mathfunc::double
+
+::vutil::type new double {
+    method SetValue {expr} {
+        next [::tcl::mathfunc::double [uplevel 1 [list expr $expr]]]
+    }
+}
+
+# new int --
+#
+# Passes input through expr and assert integer
+
+::vutil::type new int {
+    method SetValue {expr} {
+        set value [uplevel 1 [list expr $expr]]
+        if {![string is integer -strict $value]} {
+            return -code error "expected integer value but got \"$value\""
+        }
+        next $value
+    }
+}
+
+# new bool --
+#
+# Passes input through expr and assert boolean
+
+::vutil::type new bool {
+    method SetValue {expr} {
+        set value [uplevel 1 [list expr $expr]]
+        if {![string is boolean -strict $value]} {
+            return -code error "expected boolean value but got \"$value\""
+        }
+        next $value
+    }
+}
 
 # new string --
+#
+# Everything is a string. This type adds the "length" and "@" methods.
+# 
 # length:   string length
 # @:        string index
 
@@ -616,6 +658,10 @@ proc ::vutil::new {type varName args} {
 }
 
 # new list --
+#
+# Almost everything is a list. Asserts that input is a list.
+# This data type also has "length" and "@" methods.
+#
 # length    list length
 # @         list index/set
 
@@ -633,6 +679,15 @@ proc ::vutil::new {type varName args} {
     method length {} {
         llength $(value)
     }
+    
+    # @ --
+    #
+    # Method to get or set a value in a list
+    #
+    # Syntax:
+    # $list @ $i ?$i ...? = $value; # Returns object
+    # $list @ ?$i ...?; # Returns value
+    
     method @ {args} {
         if {[llength $args] >= 3 && [lindex $args end-1] eq "="} {
             # $list @ $i ?$i ...? = $value
@@ -649,12 +704,12 @@ proc ::vutil::new {type varName args} {
 # new dict --
 # size      dict size
 # set       dict set
-# get       dict get 
+# get       dict get
 
 ::vutil::type new dict {
     method SetValue {value} {
-        if {[catch {dict size $value}]} {
-            return -code error "expected dict value but got \"$value\""
+        if {[catch {dict size $value} result]} {
+            return -code error $result
         }
         next $value
     }
@@ -672,30 +727,6 @@ proc ::vutil::new {type varName args} {
     method get {args} {
         dict get $(value) {*}$args
     }
-}
-
-# double (automatically uses expr)
-::vutil::type new double {
-    method SetValue {expr} {
-        set value [::tcl::mathfunc::double [uplevel 1 [list expr $expr]]]
-        next $value
-    }
-}
-
-# int (automatically uses expr)
-# +=        increment by a value
-::vutil::type new int {
-    method SetValue {expr} {
-        set value [uplevel 1 [list expr $expr]]
-        ::errm::assert $value is int
-        next $value
-    }
-    # Add increment operators
-    method += {incr} {
-        incr (value) $incr
-        return [self]
-    }
-    export +=
 }
 
 # Finally, provide the package
