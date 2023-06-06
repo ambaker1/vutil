@@ -250,8 +250,9 @@ test obj_dne {
 test new_string {
     # Test all features of "string" type
 } -body {
-    new string string1 = {hello world}
-    tin assert {[$string1 length] == 11}
+    new string string1 = {hello}
+    tin assert {[$string1 length] == 5}
+    append $string1 { world}
     $string1 info
 } -result {exists 1 length 11 type string value {hello world}}
 
