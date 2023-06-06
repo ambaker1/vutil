@@ -306,7 +306,7 @@ proc ::vutil::link {objName} {
 # unlink $objName ...
 #
 # Arguments:
-# objName ...       Object to unlink
+# objName ...       Object(s) to unlink
 
 proc ::vutil::unlink {args} {
     foreach objName $args {
@@ -361,10 +361,15 @@ proc ::vutil::ObjectLink {objName newName args} {
 
 proc ::vutil::InitObj {objName arrayName args} {
     upvar 1 $arrayName ""
+    # If not initialized, throw DNE error.
     if {![info exists (value)]} {
-        # If not initialized, throw DNE error.
         return -code error "can't read \"$objName\", no such variable"
     }
+    # If object value is initialized, but objvar is not, initialize objvar
+    if {![info exists $objName]} {
+        set $objName $(value)
+    }
+    # Remove variable traces and set "exists" array key
     trace remove variable (value) {read write} [list ::vutil::InitObj $objName]
     set (exists) 1
     return
@@ -396,7 +401,7 @@ proc ::vutil::InitObj {objName arrayName args} {
         }
         # Initialize object
         set (type) [my Type]
-        set (exists) 0; # Initialize
+        set (exists) 0
         # Set up initialization tracer
         trace add variable (value) {read write} [list ::vutil::InitObj [self]]
         # Interpret input
