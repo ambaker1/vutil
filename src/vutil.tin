@@ -676,33 +676,12 @@ proc ::vutil::new {type varName args} {
 
 ::vutil::type add var ::vutil::var
 
-# new double --
-#
-# Passes input through expr and mathfunc::double
-
-::vutil::type new double {
-    method SetValue {expr} {
-        next [::tcl::mathfunc::double [uplevel 1 [list expr $expr]]]
-    }
-}
-
-# new int --
-#
-# Passes input through expr and assert integer
-
-::vutil::type new int {
-    method SetValue {expr} {
-        set value [uplevel 1 [list expr $expr]]
-        if {![string is integer -strict $value]} {
-            return -code error "expected integer value but got \"$value\""
-        }
-        next $value
-    }
-}
-
 # new bool --
 #
-# Passes input through expr and assert boolean
+# Passes input through expr and asserts boolean
+#
+# Additional methods:
+# ?         Shorthand if-statement (tailcalls "if")
 
 ::vutil::type new bool {
     method SetValue {expr} {
@@ -712,12 +691,93 @@ proc ::vutil::new {type varName args} {
         }
         next $value
     }
+    method ? {body1 args} {
+        if {[llength $args] == 0} {
+            tailcall if $(value) $body1
+        } 
+        if {[llength $args] != 2 || [lindex $args 0] ne {:}} {
+            return -code error "wrong # args: want \"[self] ? body1 : body2\""
+        }
+        set body2 [lindex $args 1]
+        tailcall if $(value) $body1 else $body2
+    }
+    export ?
+}
+
+# new int --
+#
+# Passes input through expr and asserts integer
+#
+# Additional methods:
+# +=        Increment by value (pass through expr) (returns object)
+# -=        Decrement by value (pass through expr) (returns object)
+# ++        Increment by 1 (returns value)
+# --        Decrement by 1 (returns value)
+
+::vutil::type new int {
+    method SetValue {expr} {
+        set value [uplevel 1 [list expr $expr]]
+        if {![string is integer -strict $value]} {
+            return -code error "expected integer value but got \"$value\""
+        }
+        next $value
+    }
+    method += {expr} {
+        incr (value) [uplevel 1 [list expr $expr]]
+        return [self]
+    }
+    method -= {expr} {
+        incr (value) [uplevel 1 [list expr -($expr)]]
+        return [self]
+    }
+    method ++ {} {
+        incr (value)
+    }
+    method -- {} {
+        incr (value) -1
+    }
+    export += -= ++ --
+}
+
+# new float --
+#
+# Double-precision floating point value.
+# Passes input through expr and mathfunc::double. 
+#
+# Additional methods:
+# +=        Add value (returns object)
+# -=        Subtract value (returns object)
+# *=        Multiply by value (returns object)
+# /=        Divide by value (returns object)
+
+::vutil::type new float {
+    method SetValue {expr} {
+        next [::tcl::mathfunc::double [uplevel 1 [list expr $expr]]]
+    }
+    method += {expr} {
+        set (value) [expr {$(value) + [uplevel 1 [list expr $expr]]}]
+        return [self]
+    }
+    method -= {expr} {
+        set (value) [expr {$(value) - [uplevel 1 [list expr $expr]]}]
+        return [self]
+    }
+    method *= {expr} {
+        set (value) [expr {$(value) * [uplevel 1 [list expr $expr]]}]
+        return [self]
+    }
+    method /= {expr} {
+        set (value) [expr {$(value) / [uplevel 1 [list expr $expr]]}]
+        return [self]
+    }
+    export += -= *= /=
 }
 
 # new string --
 #
 # Everything is a string. This type adds the "length" and "@" methods.
 # 
+# Additional methods:
 # length:   string length
 # @:        string index
 
@@ -740,8 +800,9 @@ proc ::vutil::new {type varName args} {
 # Almost everything is a list. Asserts that input is a list.
 # This data type also has "length" and "@" methods.
 #
-# length    list length
-# @         list index/set
+# Additional methods:
+# length    list length (llength)
+# @         list index/set (lindex/lset)
 
 ::vutil::type new list {
     method SetValue {value} {
@@ -780,9 +841,15 @@ proc ::vutil::new {type varName args} {
 }
 
 # new dict --
+#
+# Tcl dictionary data type
+#
+# Additional methods:
 # size      dict size
 # set       dict set
+# unset     dict unset
 # get       dict get
+# exists    dict exists
 
 ::vutil::type new dict {
     method SetValue {value} {
@@ -798,9 +865,16 @@ proc ::vutil::new {type varName args} {
     method size {} {
         dict size $(value)
     }
-    method set {args} {
-        dict set (value) {*}$args
+    method set {key args} {
+        dict set (value) $key {*}$args
         return [self]
+    }
+    method unset {key args} {
+        dict unset (value) $key {*}$args
+        return [self]
+    }
+    method exists {key args} {
+        dict exists $(value) $key {*}$args
     }
     method get {args} {
         dict get $(value) {*}$args
