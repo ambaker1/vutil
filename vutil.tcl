@@ -18,7 +18,7 @@ namespace eval ::vutil {
     namespace export lock unlock; # Hard set a Tcl variable
     namespace export tie untie; # Tie a Tcl variable to a Tcl object
     namespace export link unlink; # Create an object variable
-    namespace export obj type new; # Object variable class and types
+    namespace export var type new; # Object variable class and types
 }
 
 # pvar --
@@ -306,7 +306,7 @@ proc ::vutil::link {objName} {
 # unlink $objName ...
 #
 # Arguments:
-# objName ...       Object to unlink
+# objName ...       Object(s) to unlink
 
 proc ::vutil::unlink {args} {
     foreach objName $args {
@@ -361,51 +361,62 @@ proc ::vutil::ObjectLink {objName newName args} {
 
 proc ::vutil::InitObj {objName arrayName args} {
     upvar 1 $arrayName ""
+    # If not initialized, throw DNE error.
     if {![info exists (value)]} {
-        # If not initialized, throw DNE error.
         return -code error "can't read \"$objName\", no such variable"
     }
+    # If object value is initialized, but objvar is not, initialize objvar
+    if {![info exists $objName]} {
+        set $objName $(value)
+    }
+    # Remove variable traces and set "exists" array field
     trace remove variable (value) {read write} [list ::vutil::InitObj $objName]
     set (exists) 1
     return
 }
 
-# obj --
+# var --
 #
 # Class for object variables that store a value and have garbage collection
-#
-# $obj                  # Get object value
-# $obj info <$key>      # Get object info array (or single value)
-# $obj = $value         # Value assignment
-# $obj1 <- $obj2        # Object assignment (must be same class)
-# $obj --> $varName     # Copy object (and set up tie/link)
+# 
+# Object creation:
+# var new $refName <arg ...> <<"="> $value> <"<-" $varObj>
+# var create $name $refName <<"="> $value> <"<-" $varObj>
 #
 # Arguments:
-# varName       Variable to tie to the object
-# value         Value to assign to the object
-# name          Name of object
+# refName       Reference variable to tie to the object.
+# value         Value to assign to the object variable ("=" keyword)
+# var           Variable object to assign value from ("<-" option)
+# name          Name of object (for "create" method)
+#
+# Object methods:
+# $varObj                   # Get object variable value
+# $varObj info <$field>     # Get object variable info array (or single value)
+# $varObj = $value          # Value assignment
+# $varObj1 <- $varObj2      # Object assignment (must be same class)
+# $varObj --> $refName      # Copy object (and set up tie/link)
 
-::oo::class create ::vutil::obj {
+::oo::class create ::vutil::var {
     variable ""; # Array of object data
-    constructor {varName args} {
+    constructor {refName args} {
         # Check arity
         if {[llength $args] > 2} {
-            return -code error "wrong # args: want \"obj new varName ??=?\
-                    value | <- object?\" or \"obj create name varName ??=?\
-                    value | <- object?"
+            return -code error "wrong # args: want \"var new refName ??=?\
+                    value | <- object?\" or \"var create name refName ??=?\
+                    value | <- object?\""
         }
         # Initialize object
         set (type) [my Type]
-        set (exists) 0; # Initialize
+        set (exists) 0
         # Set up initialization tracer
         trace add variable (value) {read write} [list ::vutil::InitObj [self]]
         # Interpret input
         if {[llength $args] == 1} {
-            # obj new $varName $value
+            # var new $refName $value
             my = [lindex $args 0]; # Assign value
         } elseif {[llength $args] == 2} {
-            # obj new $varName = $value
-            # obj new $varName <- $object
+            # var new $refName = $value
+            # var new $refName <- $object
             lassign $args op value
             if {$op ni {= <-}} {
                 return -code error "unknown assignment operator \"$op\":\
@@ -413,15 +424,15 @@ proc ::vutil::InitObj {objName arrayName args} {
             }
             my $op $value
         }
-        # Link and tie object
-        upvar 1 $varName refVar
+        # Tie and link object
+        upvar 1 $refName refVar
         ::vutil::link [::vutil::tie refVar [self]]
         return
     }
     
     # Type --
     # Returns the type of object. Overwritten by "type add"
-    method Type {} {}
+    method Type {} {return var}
     
     # info --
     #
@@ -429,19 +440,19 @@ proc ::vutil::InitObj {objName arrayName args} {
     # Always has (exists) and (type), if (exists), has (value)
     #
     # Syntax:
-    # $obj info <$key>
+    # $varObj info <$field>
     #
     # Arguments:
-    # obj       Object name
-    # key       Optional key. Default "" returns all.
+    # var       Object name
+    # field     Optional field. Default "" returns all.
     
-    method info {{key ""}} {
-        if {$key eq ""} {
+    method info {{field ""}} {
+        if {$field eq ""} {
             return [lsort -stride 2 [array get ""]]
-        } elseif {[info exists ($key)]} {
-            return $($key)
+        } elseif {[info exists ($field)]} {
+            return $($field)
         } else {
-            return -code error "unknown key \"$key\"" 
+            return -code error "unknown info field \"$field\"" 
         }
     }
     
@@ -451,7 +462,7 @@ proc ::vutil::InitObj {objName arrayName args} {
     #
     # Syntax:
     # my GetValue
-    # $obj
+    # $varObj
     
     method GetValue {} {
         return $(value)
@@ -468,19 +479,18 @@ proc ::vutil::InitObj {objName arrayName args} {
     #
     # Value assignment (uses private method "SetValue"). 
     # Modify "SetValue" to add data validation and add metadata.
-    # Returns object name
+    # Returns object value
     #
     # Syntax:
     # my SetValue $value
-    # $obj = $value
+    # $varObj = $value
     #
     # Arguments:
-    # obj       Object
+    # varObj    Variable object
     # value     Value to assign
     
     method SetValue {value} {
         set (value) $value
-        return [self]
     }
     method = {args} {
         tailcall my SetValue {*}$args
@@ -490,13 +500,14 @@ proc ::vutil::InitObj {objName arrayName args} {
     # SetObject (<-) --
     # 
     # Right-to-left direct assignment (must be same class)
+    # Returns object name
     #
     # Syntax:
-    # my SetObject $obj
-    # $obj1 <- $obj2
+    # my SetObject $varObj
+    # $varObj1 <- $varObj2
     #
     # Arguments:
-    # obj1, obj2    Objects of same class
+    # varObj1, varObj2      Variable objects of same class
 
     method SetObject {objName} {
         if {![info object isa object $objName]} {
@@ -506,6 +517,9 @@ proc ::vutil::InitObj {objName arrayName args} {
             return -code error "$objName not of same class as [self]"
         }
         # Set the object info array equal to the other one.
+        if {![$objName info exists]} {
+            return -code error "can't read \"$objName\", no such variable"
+        }
         array set "" [$objName info]
         return [self]
     }
@@ -519,71 +533,135 @@ proc ::vutil::InitObj {objName arrayName args} {
     # Copy object to new variable
     #
     # Syntax:
-    # my CopyObject $obj <$args ...>
-    # $obj --> $varName <$args ...>
+    # my CopyObject $refName <$args ...>
+    # $varObj --> $refName <$args ...>
     #
     # Arguments:
-    # obj           Object
-    # varName       Variable to copy to
+    # varObj        Variable object
+    # refName       Reference variable to copy to
     # $args ...     Optional arguments to pass to ::oo::copy
     
-    method CopyObject {varName args} {
-        upvar 1 $varName refVar
+    method CopyObject {refName args} {
+        upvar 1 $refName refVar
         ::vutil::link [::vutil::tie refVar [::oo::copy [self] {*}$args]]
     }
-    method --> {varName args} {
-        tailcall my CopyObject $varName {*}$args
+    method --> {refName args} {
+        tailcall my CopyObject $refName {*}$args
     }
     export -->
 }
 
 # type --
 #
-# Class that creates obj types
+# Metaclass that creates var types
+# 
+# Object creation:
+# type new $type $arg ...
+#
+# Arguments:
+# type          Name of type
+# arg ...       Class definition arguments
 
 ::oo::class create ::vutil::type {
     superclass ::oo::class
     constructor {type args} {
-        # Rename class
-        rename [self] ::vutil::type.$type
-        oo::define [self] superclass ::vutil::obj
-        
+        if {[[self class] exists $type]} {
+            return -code error "type \"$type\" already exists"
+        }
+        rename [self] ::vutil::type.$type; # Rename class
+        oo::define [self] superclass ::vutil::var
         next {*}$args
         [self class] add $type [self]
     }
 }
+::oo::objdefine ::vutil::type unexport create; # Only allow "new"
+
+# Define "type" metaclass object methods
 ::oo::objdefine ::vutil::type {
+    # Set up variable to store types and classes
     variable typeClass
+    
+    # type add --
+    # 
+    # Add a type directly
+    #
+    # Syntax:
+    # type add $type $class
+    #
+    # Arguments:
+    # type          Name of type
+    # class         TclOO class name
+    
     method add {type class} {
         set typeClass($type) $class
         ::oo::define $class method Type {} [list return $type]
         ::oo::define $class variable ""
     }
+    
+    # type remove --
+    # 
+    # Remove a type
+    #
+    # Syntax:
+    # type remove $type
+    #
+    # Arguments:
+    # type          Name of type
+    
     method remove {type} {
         if {[my exists $type]} {
             unset typeClass($type)
         }
     }
+        
+    # type names --
+    # 
+    # Get list of all defined types
+    #
+    # Syntax:
+    # type names
+
     method names {} {
         array names typeClass
     }
+            
+    # type exists --
+    # 
+    # Check whether a type exists or not
+    #
+    # Syntax:
+    # type exists $type
+    #
+    # Arguments:
+    # type          Name of type
+    
     method exists {type} {
         info exists typeClass($type)
     }
+    
+    # type class --
+    # 
+    # Get class associated with type
+    #
+    # Syntax:
+    # type class $type
+    #
+    # Arguments:
+    # type          Name of type
+    
     method class {type} {
         if {![my exists $type]} {
             return -code error "type $type does not exist"
         }
         return $typeClass($type)
     }
-    unexport create; # Only allow "new"
-}
+}; # end object definition
 
-# new --
+# new --    
 #
 # Create a new object variable (with type)
 #
-# new $type $varName <"=" $value> <"<-" $object>
+# new $type $varName <<"="> $value> <"<-" $object>
 
 proc ::vutil::new {type varName args} {
     tailcall [type class $type] new $varName {*}$args
@@ -592,39 +670,18 @@ proc ::vutil::new {type varName args} {
 # BASIC DATA TYPES
 ################################################################################
 
-# new obj --
+# new var --
 #
-# Blank object, no meta data.
+# Basic variable type (no meta data)
 
-::vutil::type add obj ::vutil::obj
-
-# new double --
-#
-# Passes input through expr and mathfunc::double
-
-::vutil::type new double {
-    method SetValue {expr} {
-        next [::tcl::mathfunc::double [uplevel 1 [list expr $expr]]]
-    }
-}
-
-# new int --
-#
-# Passes input through expr and assert integer
-
-::vutil::type new int {
-    method SetValue {expr} {
-        set value [uplevel 1 [list expr $expr]]
-        if {![string is integer -strict $value]} {
-            return -code error "expected integer value but got \"$value\""
-        }
-        next $value
-    }
-}
+::vutil::type add var ::vutil::var
 
 # new bool --
 #
-# Passes input through expr and assert boolean
+# Passes input through expr and asserts boolean
+#
+# Additional methods:
+# ?         Shorthand if-statement (tailcalls "if")
 
 ::vutil::type new bool {
     method SetValue {expr} {
@@ -634,12 +691,87 @@ proc ::vutil::new {type varName args} {
         }
         next $value
     }
+    method ? {body1 args} {
+        if {[llength $args] == 0} {
+            tailcall if $(value) $body1
+        } 
+        if {[llength $args] != 2 || [lindex $args 0] ne {:}} {
+            return -code error "wrong # args: want \"[self] ? body1 : body2\""
+        }
+        set body2 [lindex $args 1]
+        tailcall if $(value) $body1 else $body2
+    }
+    export ?
+}
+
+# new int --
+#
+# Passes input through expr and asserts integer
+#
+# Additional methods:
+# +=        Increment by value
+# -=        Decrement by value
+# ++        Increment by 1
+# --        Decrement by 1
+
+::vutil::type new int {
+    method SetValue {value} {
+        if {![string is integer -strict $value]} {
+            return -code error "expected integer value but got \"$value\""
+        }
+        next $value
+    }
+    method += {value} {
+        incr (value) $value
+    }
+    method -= {value} {
+        incr (value) -$value
+    }
+    method ++ {} {
+        incr (value)
+    }
+    method -- {} {
+        incr (value) -1
+    }
+    export += -= ++ --
+}
+
+# new float --
+#
+# Double-precision floating point value.
+# Passes input through expr and mathfunc::double. 
+#
+# Additional methods:
+# +=        Add value
+# -=        Subtract value
+# *=        Multiply by value
+# /=        Divide by value
+
+::vutil::type new float {
+    method SetValue {expr} {
+        set value [::tcl::mathfunc::double [uplevel 1 [list expr $expr]]]
+        next $value
+    }
+    method += {expr} {
+        set (value) [expr {$(value) + [uplevel 1 [list expr $expr]]}]
+    }
+    method -= {expr} {
+        set (value) [expr {$(value) - [uplevel 1 [list expr $expr]]}]
+    }
+    method *= {expr} {
+        set (value) [expr {$(value) * [uplevel 1 [list expr $expr]]}]
+    }
+    method /= {expr} {
+        set (value) [expr {$(value) / [uplevel 1 [list expr $expr]]}]
+    }
+    export += -= *= /=
 }
 
 # new string --
 #
 # Everything is a string. This type adds the "length" and "@" methods.
 # 
+# Additional methods:
 # length:   string length
 # @:        string index
 
@@ -662,8 +794,9 @@ proc ::vutil::new {type varName args} {
 # Almost everything is a list. Asserts that input is a list.
 # This data type also has "length" and "@" methods.
 #
-# length    list length
-# @         list index/set
+# Additional methods:
+# length    list length (llength)
+# @         list index/set (lindex/lset)
 
 ::vutil::type new list {
     method SetValue {value} {
@@ -702,9 +835,15 @@ proc ::vutil::new {type varName args} {
 }
 
 # new dict --
+#
+# Tcl dictionary data type
+#
+# Additional methods:
 # size      dict size
 # set       dict set
+# unset     dict unset
 # get       dict get
+# exists    dict exists
 
 ::vutil::type new dict {
     method SetValue {value} {
@@ -720,9 +859,16 @@ proc ::vutil::new {type varName args} {
     method size {} {
         dict size $(value)
     }
-    method set {args} {
-        dict set (value) {*}$args
+    method set {key args} {
+        dict set (value) $key {*}$args
         return [self]
+    }
+    method unset {key args} {
+        dict unset (value) $key {*}$args
+        return [self]
+    }
+    method exists {key args} {
+        dict exists $(value) $key {*}$args
     }
     method get {args} {
         dict get $(value) {*}$args
