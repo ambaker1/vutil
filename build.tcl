@@ -294,7 +294,7 @@ test new_dict {
     new dict dict1
     $dict1 set a 5
     $dict1 set b 3
-    tin assert {[$dict1 set c 5] eq $dict1}
+    $dict1 set c 5
     tin assert {[$dict1 get a] == 5}
     tin assert {[$dict1 exists c]}
     tin assert {![$dict1 exists d]}

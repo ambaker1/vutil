@@ -709,23 +709,24 @@ proc ::vutil::new {type varName args} {
 # Passes input through expr and asserts integer
 #
 # Additional methods:
-# +=        Increment by value
-# -=        Decrement by value
+# +=        Increment by value (pass through expr)
+# -=        Decrement by value (pass through expr)
 # ++        Increment by 1
 # --        Decrement by 1
 
 ::vutil::type new int {
-    method SetValue {value} {
+    method SetValue {expr} {
+        set value [uplevel 1 [list expr $expr]]
         if {![string is integer -strict $value]} {
             return -code error "expected integer value but got \"$value\""
         }
         next $value
     }
-    method += {value} {
-        incr (value) $value
+    method += {expr} {
+        incr (value) [uplevel 1 [list expr $expr]]
     }
-    method -= {value} {
-        incr (value) -$value
+    method -= {expr} {
+        incr (value) [uplevel 1 [list expr -($expr)]]
     }
     method ++ {} {
         incr (value)
@@ -861,11 +862,9 @@ proc ::vutil::new {type varName args} {
     }
     method set {key args} {
         dict set (value) $key {*}$args
-        return [self]
     }
     method unset {key args} {
         dict unset (value) $key {*}$args
-        return [self]
     }
     method exists {key args} {
         dict exists $(value) $key {*}$args

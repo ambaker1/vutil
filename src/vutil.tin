@@ -715,7 +715,7 @@ proc ::vutil::new {type varName args} {
 # --        Decrement by 1
 
 ::vutil::type new int {
-    method SetValue {value} {
+    method SetValue {expr} {
         set value [uplevel 1 [list expr $expr]]
         if {![string is integer -strict $value]} {
             return -code error "expected integer value but got \"$value\""
@@ -862,11 +862,9 @@ proc ::vutil::new {type varName args} {
     }
     method set {key args} {
         dict set (value) $key {*}$args
-        return [self]
     }
     method unset {key args} {
         dict unset (value) $key {*}$args
-        return [self]
     }
     method exists {key args} {
         dict exists $(value) $key {*}$args
