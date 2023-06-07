@@ -553,51 +553,115 @@ proc ::vutil::InitObj {objName arrayName args} {
 
 # type --
 #
-# Class that creates obj types
+# Metaclass that creates var types
+# 
+# Object creation:
+# type new $type $arg ...
+#
+# Arguments:
+# type          Name of type
+# arg ...       Class definition arguments
 
 ::oo::class create ::vutil::type {
     superclass ::oo::class
     constructor {type args} {
-        # Rename class
-        rename [self] ::vutil::type.$type
-        oo::define [self] superclass ::vutil::obj
-        
+        if {[[self class] exists $type]} {
+            return -code error "type \"$type\" already exists"
+        }
+        rename [self] ::vutil::type.$type; # Rename class
+        oo::define [self] superclass ::vutil::var
         next {*}$args
         [self class] add $type [self]
     }
 }
+::oo::objdefine ::vutil::type unexport create; # Only allow "new"
+
+# Define "type" metaclass object methods
 ::oo::objdefine ::vutil::type {
+    # Set up variable to store types and classes
     variable typeClass
+    
+    # type add --
+    # 
+    # Add a type directly
+    #
+    # Syntax:
+    # type add $type $class
+    #
+    # Arguments:
+    # type          Name of type
+    # class         TclOO class name
+    
     method add {type class} {
         set typeClass($type) $class
         ::oo::define $class method Type {} [list return $type]
         ::oo::define $class variable ""
     }
+    
+    # type remove --
+    # 
+    # Remove a type
+    #
+    # Syntax:
+    # type remove $type
+    #
+    # Arguments:
+    # type          Name of type
+    
     method remove {type} {
         if {[my exists $type]} {
             unset typeClass($type)
         }
     }
+        
+    # type names --
+    # 
+    # Get list of all defined types
+    #
+    # Syntax:
+    # type names
+
     method names {} {
         array names typeClass
     }
+            
+    # type exists --
+    # 
+    # Check whether a type exists or not
+    #
+    # Syntax:
+    # type exists $type
+    #
+    # Arguments:
+    # type          Name of type
+    
     method exists {type} {
         info exists typeClass($type)
     }
+    
+    # type class --
+    # 
+    # Get class associated with type
+    #
+    # Syntax:
+    # type class $type
+    #
+    # Arguments:
+    # type          Name of type
+    
     method class {type} {
         if {![my exists $type]} {
             return -code error "type $type does not exist"
         }
         return $typeClass($type)
     }
-    unexport create; # Only allow "new"
-}
+}; # end object definition
 
-# new --
+# new --    
 #
 # Create a new object variable (with type)
 #
-# new $type $varName <"=" $value> <"<-" $object>
+# new $type $varName <<"="> $value> <"<-" $object>
 
 proc ::vutil::new {type varName args} {
     tailcall [type class $type] new $varName {*}$args
