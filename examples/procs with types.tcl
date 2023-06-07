@@ -1,10 +1,10 @@
 package require tin
 tin import vutil
 
-# Using "var" with a proc
+# proc with types
 proc foo {a b c} {
-    new var a $a
-    new var b $b
+    new string a $a
+    new string b $b
     new bool c $c
     $c ? {$a} : {$b}
 }
@@ -40,3 +40,8 @@ for {new int i 0} {[$i] < [$x length]} {$i ++} {
     $x @ [$i] = [$element]; # Assigns value
 }
 puts [$x]; # 11.0 12.0 13.0
+
+# For-loop example
+for {new int i 0} {[$i] < 3} {$i ++} {
+    puts [$i]
+}
