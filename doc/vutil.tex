@@ -289,21 +289,21 @@ hello world
 If the variable object is called with no method (e.g. \texttt{[\$varObj]}), it will simply return the value of the object variable.
 In addition, object variables have the following methods:
 
-The method ``\methodlink[0]{var}{=}'' assigns the value of the object variable.
+The method ``\texttt{\methodlink[0]{var}{=}}'' assigns the value of the object variable.
 \begin{syntax}
 \method{var}{=} \$value
 \end{syntax}
 \begin{args}
 \$value & Value to set object variable to.
 \end{args}
-The method ``\methodlink[0]{var}{<-}'' assigns the value of the object directly from another object variable of the same class.
+The method ``\texttt{\methodlink[0]{var}{<-}}'' assigns the value of the object directly from another object variable of the same class.
 \begin{syntax}
 \method{var}{<-} \$otherVarObj 
 \end{syntax}
 \begin{args}
 \$otherVarObj & Other object variable to assign value from.
 \end{args}
-The method ``\methodlink[0]{var}{-{}->}'' copies the object variable.
+The method ``\texttt{\methodlink[0]{var}{-{}->}}'' copies the object variable.
 \begin{syntax}
 \method{var}{-{}->} \$refName <\$arg ...>
 \end{syntax}
@@ -389,7 +389,7 @@ the class associated with a type can be queried with the method \subcmdlink[0]{t
 
 \clearpage
 \subsection{Creating Type Variables}
-The command \cmdlink{new} creates a new variable object of specified type.
+Then, using the types defined by \cmdlink{type}, the command \cmdlink{new} creates a new variable object of specified type.
 
 \begin{syntax}
 \command{new} \$type \$refName <{}<"="> \$value | "<-" \$varObj>
@@ -438,6 +438,7 @@ hello world
 \clearpage
 \section{Type Library}
 This package provides a few basic object variable types: \subcmdlink[0]{new}{var}, \subcmdlink[0]{new}{string}, \subcmdlink[0]{new}{bool}, \subcmdlink[0]{new}{int}, \subcmdlink[0]{new}{float}, \subcmdlink[0]{new}{list}, and \subcmdlink[0]{new}{dict}.
+If you want to create your own datatype, check out the source code implementation for API documentation.
 
 \subsection{Type ``var''}
 The type \subcmdlink[0]{new}{var} is just an alternative way to create an object variable (same syntax as ``new'' method for \cmdlink{var} class).
