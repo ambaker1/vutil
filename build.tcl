@@ -168,17 +168,29 @@ test tie-trace-count {
     llength [trace info variable a]
 } -result {1}
 
+test obj_untie {
+    # Object variable, with gc eliminated using "untie"
+} -body {
+    var new x
+    untie x
+    set y $x
+    $x = {hello}
+    tin assert {[$y] eq {hello}}
+    unset $y
+    info exists $x
+} -result 0
+
 test obj_new {
     # Create an object with automatic name
 } -body {
-    obj new a = foo
+    var new a = foo
     $a
 } -result {foo}
 
 test obj_create {
     # Create an object with name
 } -body {
-    obj create myObj b = foo
+    var create myObj b = foo
     list [myObj] [$b]
 } -result {foo foo}
 
@@ -186,7 +198,7 @@ test obj_gc {
     # Ensure that objects are deleted inside procedures (garbage collection)
 } -body {
     proc foo {value} {
-        obj new a = $value
+        var new a = $value
         return $a
     }
     info object isa object [foo hi]
@@ -196,7 +208,7 @@ test obj_gc2 {
     # Pass values from objects
 } -body {
     proc foo {value} {
-        obj new x = $value
+        var new x = $value
         return [$x]
     }
     foo hi
@@ -205,7 +217,7 @@ test obj_gc2 {
 test obj_assignment {
     # Assign values
 } -body {
-    obj new x
+    var new x
     $x = {hello world}
     $x
 } -result {hello world}
@@ -232,6 +244,14 @@ test obj_copygc {
     info object isa object $z
 } -result {0}
 
+test obj_copy_error {
+    # Do not permit copying from blank variable
+} -body {
+    var new z
+    tin assert {[catch {$x <- $z}] == 1}
+    $x
+} -result {hello world}
+
 test obj_set {
     # Ensure that the value can be set easily
 } -body {
@@ -242,10 +262,10 @@ test obj_set {
 test obj_dne {
     # Create new object (does not exist)
 } -body {
-    new obj obj1
+    var new obj1
     puts [info exists $obj1]
     list [$obj1 info] [info exists $obj1]
-} -result {{exists 0 type obj} 0}
+} -result {{exists 0 type var} 0}
 
 test new_string {
     # Test all features of "string" type
@@ -276,18 +296,23 @@ test new_dict {
     $dict1 set b 3
     tin assert {[$dict1 set c 5] eq $dict1}
     tin assert {[$dict1 get a] == 5}
+    tin assert {[$dict1 exists c]}
+    tin assert {![$dict1 exists d]}
+    $dict1 set d 7
+    $dict1 unset d
+    tin assert {[$dict1 size] == 3}
     $dict1 info
 } -result {exists 1 size 3 type dict value {a 5 b 3 c 5}}
 
-test new_double {
-    # Test all features of the "double" type
+test new_float {
+    # Test all features of the "float" type
 } -body {
-    new double x = {2 + 2}
+    new float x = {2 + 2}
     tin assert {[$x] == 4}
-    set a 5
-    $x = {[$x] * $a}
+    new float a 4
+    $x *= {[$a] + 1}
     $x info
-} -result {exists 1 type double value 20.0}
+} -result {exists 1 type float value 20.0}
 
 test new_int {
     # Test all features of the "int" type
@@ -304,9 +329,9 @@ test new_bool {
 } -body {
     new bool flag = true
     $flag = ![$flag]
-    if [$flag] {
+    $flag ? {
         return hi
-    } else {
+    } : {
         return hey
     }
 } -result {hey}
