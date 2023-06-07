@@ -670,11 +670,11 @@ proc ::vutil::new {type varName args} {
 # BASIC DATA TYPES
 ################################################################################
 
-# new obj --
+# new var --
 #
-# Blank object, no meta data.
+# Basic variable type (no meta data)
 
-::vutil::type add obj ::vutil::obj
+::vutil::type add var ::vutil::var
 
 # new double --
 #
