@@ -479,7 +479,7 @@ proc ::vutil::InitObj {objName arrayName args} {
     #
     # Value assignment (uses private method "SetValue"). 
     # Modify "SetValue" to add data validation and add metadata.
-    # Returns object name
+    # Returns object value
     #
     # Syntax:
     # my SetValue $value
@@ -491,7 +491,6 @@ proc ::vutil::InitObj {objName arrayName args} {
     
     method SetValue {value} {
         set (value) $value
-        return [self]
     }
     method = {args} {
         tailcall my SetValue {*}$args
@@ -501,6 +500,7 @@ proc ::vutil::InitObj {objName arrayName args} {
     # SetObject (<-) --
     # 
     # Right-to-left direct assignment (must be same class)
+    # Returns object name
     #
     # Syntax:
     # my SetObject $varObj
@@ -709,26 +709,23 @@ proc ::vutil::new {type varName args} {
 # Passes input through expr and asserts integer
 #
 # Additional methods:
-# +=        Increment by value (pass through expr) (returns object)
-# -=        Decrement by value (pass through expr) (returns object)
-# ++        Increment by 1 (returns value)
-# --        Decrement by 1 (returns value)
+# +=        Increment by value
+# -=        Decrement by value
+# ++        Increment by 1
+# --        Decrement by 1
 
 ::vutil::type new int {
-    method SetValue {expr} {
-        set value [uplevel 1 [list expr $expr]]
+    method SetValue {value} {
         if {![string is integer -strict $value]} {
             return -code error "expected integer value but got \"$value\""
         }
         next $value
     }
-    method += {expr} {
-        incr (value) [uplevel 1 [list expr $expr]]
-        return [self]
+    method += {value} {
+        incr (value) $value
     }
-    method -= {expr} {
-        incr (value) [uplevel 1 [list expr -($expr)]]
-        return [self]
+    method -= {value} {
+        incr (value) -$value
     }
     method ++ {} {
         incr (value)
@@ -745,30 +742,27 @@ proc ::vutil::new {type varName args} {
 # Passes input through expr and mathfunc::double. 
 #
 # Additional methods:
-# +=        Add value (returns object)
-# -=        Subtract value (returns object)
-# *=        Multiply by value (returns object)
-# /=        Divide by value (returns object)
+# +=        Add value
+# -=        Subtract value
+# *=        Multiply by value
+# /=        Divide by value
 
 ::vutil::type new float {
     method SetValue {expr} {
-        next [::tcl::mathfunc::double [uplevel 1 [list expr $expr]]]
+        set value [::tcl::mathfunc::double [uplevel 1 [list expr $expr]]]
+        next $value
     }
     method += {expr} {
         set (value) [expr {$(value) + [uplevel 1 [list expr $expr]]}]
-        return [self]
     }
     method -= {expr} {
         set (value) [expr {$(value) - [uplevel 1 [list expr $expr]]}]
-        return [self]
     }
     method *= {expr} {
         set (value) [expr {$(value) * [uplevel 1 [list expr $expr]]}]
-        return [self]
     }
     method /= {expr} {
         set (value) [expr {$(value) / [uplevel 1 [list expr $expr]]}]
-        return [self]
     }
     export += -= *= /=
 }
