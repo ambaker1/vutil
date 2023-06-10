@@ -1,6 +1,6 @@
-package require tin 0.5
+package require tin 0.7.2
 tin import tcltest
-set version 0.3
+set version 0.4
 set config [dict create VERSION $version]
 tin bake src build $config
 tin bake doc/template/version.tin doc/template/version.tex $config
@@ -168,6 +168,198 @@ test tie-trace-count {
     llength [trace info variable a]
 } -result {1}
 
+test obj_untie {
+    # Object variable, with gc eliminated using "untie"
+} -body {
+    var new x
+    untie x
+    set y $x
+    $x = {hello}
+    tin assert {[$y] eq {hello}}
+    unset $y
+    info exists $x
+} -result 0
+
+test obj_new {
+    # Create an object with automatic name
+} -body {
+    [var new a] = foo
+    $a
+} -result {foo}
+
+test obj_create {
+    # Create an object with name
+} -body {
+    [var create myObj b] = foo
+    list [myObj] [$b]
+} -result {foo foo}
+
+test obj_gc {
+    # Ensure that objects are deleted inside procedures (garbage collection)
+} -body {
+    proc foo {value} {
+        [var new a] = $value
+        return $a
+    }
+    info object isa object [foo hi]
+} -result {0}
+
+test obj_gc2 {
+    # Pass values from objects
+} -body {
+    proc foo {value} {
+        [var new x] = $value
+        return [$x]
+    }
+    foo hi
+} -result {hi}
+
+test obj_assignment {
+    # Assign values
+} -body {
+    var new x
+    $x = {hello world}
+    $x
+} -result {hello world}
+
+test obj_copy {
+    # Copy object
+} -body {
+    $x --> y
+    $y
+} -result {hello world}
+
+test obj_copy2 {
+    # Copy object contents into existing
+} -body {
+    $x <- $y
+    $y
+} -result {hello world}
+
+test obj_copygc {
+    # Ensure that garbage collection is set up on copied object
+} -body {
+    set z $y
+    unset y; # Destroys object
+    info object isa object $z
+} -result {0}
+
+test obj_copy_error {
+    # Do not permit copying from blank variable
+} -body {
+    var new z
+    tin assert {[catch {$x <- $z}] == 1}; # z does not exist
+    tin assert {[catch {$z --> x}] == 0}; # overwrites x
+    $x info exists
+} -result {0}
+
+test obj_set {
+    # Ensure that the value can be set easily
+} -body {
+    set $x 10
+    $x
+} -result {10}
+
+test obj_dne {
+    # Create new object (does not exist)
+} -body {
+    var new obj1
+    puts [info exists $obj1]
+    list [$obj1 info] [info exists $obj1]
+} -result {{exists 0 type var} 0}
+
+test new_string {
+    # Test all features of "string" type
+} -body {
+    [new string string1] = {hello}
+    tin assert {[$string1 length] == 5}
+    append $string1 { world}
+    $string1 info
+} -result {exists 1 length 11 type string value {hello world}}
+
+test new_list {
+    # Test all features of "list" type
+} -body {
+    [new list list1] = {hello world}
+    tin assert {[$list1 length] == 2}
+    $list1 @ 0 = "hey"
+    $list1 @ 1 = "there"
+    $list1 @ end+1 = "world"
+    tin assert {[$list1 @ end] eq "world"}
+    $list1 info
+} -result {exists 1 length 3 type list value {hey there world}}
+
+test new_dict {
+    # Test all features of the "dict" type
+} -body {
+    new dict dict1
+    $dict1 set a 5
+    $dict1 set b 3
+    $dict1 set c 5
+    tin assert {[$dict1 get a] == 5}
+    tin assert {[$dict1 exists c]}
+    tin assert {![$dict1 exists d]}
+    tin assert {[$dict1 set d 7] eq $dict1}
+    $dict1 unset d
+    tin assert {[$dict1 size] == 3}
+    $dict1 print
+    $dict1 info
+} -result {exists 1 size 3 type dict value {a 5 b 3 c 5}}
+
+test new_float {
+    # Test all features of the "float" type
+} -body {
+    new float x {2 + 2}
+    tin assert {[$x] == 4}
+    [new float a] = {[$x] - 2}; # Assures that it is being evaluated at uplevel.
+    [new float b] <- [$a *= 2]
+    tin assert {[$b] == 4}
+    [$x *= {[$a] + 1}] --> c
+    $c info
+} -result {exists 1 type float value 20.0}
+
+test new_int {
+    # Test all features of the "int" type
+} -body {
+    set values ""
+    for {new int i 0} {[$i] < 10} {$i ++} {
+        lappend values [$i]
+    }
+    set values
+} -result {0 1 2 3 4 5 6 7 8 9}
+
+test var_ops {
+    # Demonstrate features of object variable operators
+} -body {
+    var new x; # Create blank variable x
+    [$x --> y] = 5; # Copy x to y, and set to 5
+    [var new z] <- [$x <- $y]; # Create z and set to x after setting x to y.
+    incr $z [$x]; # Increment z by value of x (5)
+    append $y [set $x 0]; # Append y the value of $x after setting x to 0
+    list [$x] [$y] [$z]
+} -result {0 50 10}
+
+test new_bool {
+    # Test all features of the "bool" type
+} -body {
+    [new bool flag] = true
+    $flag = ![$flag]
+    $flag ? {
+        return hi
+    } : {
+        return hey
+    }
+} -result {hey}
+
+test var_print {
+    # Ensure that print method works
+} -body {
+var new x {Hello World}
+puts [$x info]
+$x print -nonewline
+} -output {exists 1 type var value {Hello World}
+Hello World}
+
 # Check number of failed tests
 set nFailed $::tcltest::numTests(Failed)
 
@@ -181,6 +373,7 @@ if {$nFailed > 0} {
 
 # Tests passed, copy build files to main folder and install
 file copy -force {*}[glob -directory build *] [pwd]
+
 exec tclsh install.tcl
 
 # Verify installation
