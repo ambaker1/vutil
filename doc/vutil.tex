@@ -21,7 +21,7 @@ This package provides various utilities for working with variables in Tcl, inclu
 \end{abstract}
 \clearpage
 \section{Printing Variables to Screen} 
-The \cmdlink{pvar} command is a short-hand function for printing the name and values of Tcl variables.
+The \cmdlink{pvar} command is a short-hand function for printing the name and values of Tcl variables, in the same style as the Tcl \textit{parray} command.
 \begin{syntax}
 \command{pvar} \$name1 \$name2 …
 \end{syntax}
@@ -91,7 +91,7 @@ puts [::foo::bar2]; # local a b c
 \clearpage
 
 \section{Default Values}
-The command \cmdlink{default} assigns values to variables if they do not exist.
+The command \cmdlink{default} assigns values to variables if they do not exist. 
 
 \begin{syntax}
 \command{default} \$varName \$value
@@ -106,7 +106,7 @@ The example below shows how default values are only applied if the variable does
 \begin{example}{Variable defaults}
 \begin{lstlisting}
 set a 5
-default a 7
+default a 7; # equivalent to "if {![info exists a]} {set a 7}"
 puts $a
 unset a
 default a 7
@@ -120,7 +120,8 @@ puts $a
 \end{example}
 \clearpage
 \section{Variable Locks}
-The command \cmdlink{lock} uses Tcl variable traces to make a read-only variable.
+The command \cmdlink{lock} uses Tcl variable traces to make a read-only variable. 
+This is especially useful for controlling a parameter study of an analysis from a top-level.
 
 \begin{syntax}
 \command{lock} \$varName <\$value>
@@ -160,7 +161,8 @@ puts $a
 \section{Variable-Object Ties}
 As of Tcl version 8.6, there is no garbage collection for Tcl objects, they have to be removed manually with the ``destroy'' method. 
 The command \cmdlink{tie} is a solution for this problem, using variable traces to destroy the corresponding object when the variable is unset or modified. 
-Tie is separate from lock; a tie will override a lock, and a lock will override a tie.
+For example, if an object is tied to a local procedure variable, the object will be destroyed when the procedure returns.
+Tie is separate from lock; a tie will override a lock, and a lock will override a tie. 
 \begin{syntax}
 \command{tie} \$varName <\$object>
 \end{syntax}
@@ -198,7 +200,7 @@ invalid command name "::bar"
 \clearpage
 \section{Variable-Object Links}
 The command \cmdlink{link} links a global variable to a TclOO object, using the name of the object as the variable name. 
-The value of the linked object variable is accessed by calling the TclOO object with no arguments (the ``unknown'' method), and writing to the object-variable calls the ``='' method. 
+The value of the linked object variable is accessed by calling the TclOO object with no arguments (the ``unknown'' method), and writing to the object-variable calls the object's ``\texttt{=}'' method. 
 Unsetting the linked object variable also calls the object's ``destroy'' method, and destroying the object unsets the linked object variable.
 Linked object-variables are unlinked when the object is destroyed, but can also be unlinked with the command \cmdlink{unlink}.
 \begin{syntax}
@@ -210,12 +212,12 @@ Linked object-variables are unlinked when the object is destroyed, but can also 
 \begin{args}
 \$object … & Object(s) to link/unlink.
 \end{args}
-\begin{example}{Linking object variable}
+\begin{example}{Linking an object variable}
 \begin{lstlisting}
 ::oo::class create number {
     variable value
     constructor {args} {
-        my = {*}$args
+        set value [uplevel 1 expr $args]
     }
     method unknown {args} {
         if {[llength $args] == 0} {
@@ -245,25 +247,26 @@ puts [subst $$a]; # 51
 \end{example}
 \clearpage
 \section{Object Variable Class}
-The \cmdlink{var} TclOO class creates linked object variables that are tied to local variables, using \cmdlink{link} and \cmdlink{tie}.
+The TclOO class \cmdlink{var} creates linked object variables that are tied to local variables, using \cmdlink{link} and \cmdlink{tie}.
+The main concept of the object variable is that if called as a command with no arguments, it will return the object variable value. 
+All object variable methods that modify the object variable return the object name, allowing for nested object variable modification calls.
 
 \begin{syntax}
-\command{var} new \$refName <{}<"="> \$value | "<-" \$varObj> \\
-var create \$objName \$refName <{}<"="> \$value | "<-" \$varObj> 
+\command{var} new \$refName <\$value> \\
+var create \$objName \$refName <\$value> 
 \end{syntax}
 \begin{args}
 \$objName & Explicit name for object. \\
 \$refName & Name of reference variable to tie to object. \\
-\$value & Value to set object variable to (using the optional ``\texttt{=}'' keyword). \\
-\$varObj & Other object variable to copy value from (using the ``\texttt{<-}'' keyword).
+\$value & Value to set object variable to. \\
 \end{args}
 
 \begin{example}{Object variables with garbage collection}
 \begin{lstlisting}
 # Example showing how object variables behave in procedures
 proc foo {value} {
-    obj create myObj a = $value
-    puts $a; # ::myObj
+    var create myObj a
+    puts [$a = $value]; # ::myObj
     puts [info object isa object $a]; # 1
     append $a { world}
     puts [$a]; # hello world
@@ -285,33 +288,59 @@ hello world
 
 
 \clearpage
-\subsection{Object Variable Methods}
-If the variable object is called with no method (e.g. \texttt{[\$varObj]}), it will simply return the value of the object variable.
-In addition, object variables have the following methods:
+\subsection{Object Variable Access}
+In addition to being able to manipulate object variables directly with Tcl commands, variables can also be manipulated with object variable operators. 
 
-The method ``\texttt{\methodlink[0]{var}{=}}'' assigns the value of the object variable.
+Calling the object variable directly (e.g. \texttt{[\$varObj]}) returns the value stored in the object variable. 
+\begin{syntax}
+\$varObj
+\end{syntax}
+
+The operator ``\texttt{\methodlink[0]{var}{=}}'' assigns the value of the object variable, and returns the name of the object.
 \begin{syntax}
 \method{var}{=} \$value
 \end{syntax}
 \begin{args}
 \$value & Value to set object variable to.
 \end{args}
-The method ``\texttt{\methodlink[0]{var}{<-}}'' assigns the value of the object directly from another object variable of the same class.
+The operator ``\texttt{\methodlink[0]{var}{<-}}'' assigns the value of the object directly from another object variable of the same class, and, like the operator  ``\texttt{\methodlink[0]{var}{=}}'', returns the name of the object.
 \begin{syntax}
 \method{var}{<-} \$otherVarObj 
 \end{syntax}
 \begin{args}
 \$otherVarObj & Other object variable to assign value from.
 \end{args}
-The method ``\texttt{\methodlink[0]{var}{-{}->}}'' copies the object variable.
+The operator ``\texttt{\methodlink[0]{var}{-{}->}}'' copies the object to a new reference variable, and returns the name of the new object.
 \begin{syntax}
-\method{var}{-{}->} \$refName <\$arg ...>
+\method{var}{-{}->} \$refName
 \end{syntax}
 \begin{args}
-\$refName & Name of reference variable to tie to object. \\
-\$arg ... & Additional arguments to pass to Tcl \textit{oo::copy} command.
+\$refName & Name of reference variable to tie to object. 
 \end{args}
-The method \methodlink[0]{var}{info} accesses object variable metadata. Fields ``exists'' and ``type'' always exist, and ``value'' is populated when the variable is initialized.
+
+The example below demonstrates how object variables can be manipulated:
+
+\begin{example}{Object variable manipulation features}
+\begin{lstlisting}
+var new x; # Create blank variable $x
+[$x --> y] = 5; # Copy $x to $y, and set to 5
+[var new z] <- [$x <- $y]; # Create $z and set to x after setting $x to $y.
+incr $z [$x]; # Increment $z by value of $x (5) 
+append $y [set $x 0]; # Append $y the value of $x after setting $x to 0
+puts [list [$x] [$y] [$z]]
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+0 50 10
+\end{lstlisting}
+\end{example}
+
+\clearpage
+\subsection{Object Variable Methods}
+Additional information about the object variable can be accessed with object variable methods:
+
+The method \methodlink[0]{var}{info} accesses all object variable metadata. 
+Fields ``exists'' and ``type'' always exist, and ``value'' is populated when the variable is initialized.
 \begin{syntax}
 \method{var}{info} <\$field>
 \end{syntax}
@@ -319,24 +348,31 @@ The method \methodlink[0]{var}{info} accesses object variable metadata. Fields `
 \$field & Info field to get. Default returns dictionary of all info. \\
 \end{args}
 
-\begin{example}{Copying variables}
+The method \methodlink[0]{var}{print} is a short-hand way to print the value of the variable to screen.
+\begin{syntax}
+\method{var}{print} <-nonewline> <\$channelID>
+\end{syntax}
+\begin{args}
+-nonewline & Option to print without newline. \\
+\$channelID & Channel ID open for writing. Default stdout.
+\end{args}
+\begin{example}{Printing the value of a variable}
 \begin{lstlisting}
-var new x
-$x --> y
-$x = 5; # does not affect copy
+var new x {Hello World}
 puts [$x info]
-puts [$y info]
+$x print
 \end{lstlisting}
 \tcblower
 \begin{lstlisting}
-exists 1 type {} value 5
-exists 0 type {}
+exists 1 type var value {Hello World}
+Hello World
 \end{lstlisting}
 \end{example}
 
+
 \clearpage
 \section{Object Variable Types}
-The \cmdlink{var} TclOO class acts as a superclass for a pure-Tcl type system, managed through the metaclass \cmdlink{type}.
+The TclOO class \cmdlink{var} acts as a superclass for a pure-Tcl type system, managed through the metaclass \cmdlink{type}.
 \begin{syntax}
 \command{type} \$method \$arg ...
 \end{syntax}
@@ -356,7 +392,7 @@ The resulting class, named ``\texttt{::vutil::type.\$type}'', uses ``\texttt{::v
 \end{args}
 
 Existing classes can be added to the type library directly with the method \subcmdlink[0]{type}{add}. 
-These classes do not need to be subclasses of \texttt{::vutil::var}, but it is recommended to utilize \texttt{::vutil::var} as a superclass.
+These classes do not need to be subclasses of ``\texttt{::vutil::var}'', but it is recommended to utilize ``\texttt{::vutil::var}'' as a superclass.
 
 \begin{syntax}
 \subcommand{type}{add} \$type \$class
@@ -389,16 +425,15 @@ the class associated with a type can be queried with the method \subcmdlink[0]{t
 
 \clearpage
 \subsection{Creating Type Variables}
-Then, using the types defined by \cmdlink{type}, the command \cmdlink{new} creates a new variable object of specified type.
+Then, using the types defined by \cmdlink{type}, the command \cmdlink{new} creates a new variable object of a specified type.
 
 \begin{syntax}
-\command{new} \$type \$refName <{}<"="> \$value | "<-" \$varObj>
+\command{new} \$type \$refName <\$value>
 \end{syntax}
 \begin{args}
 \$type & Name of type. \\
 \$refName & Name of reference variable to tie to object. \\
-\$value & Value to set object variable to (using the optional ``\texttt{=}'' keyword). \\
-\$varObj & Other object variable to copy value from (using the ``\texttt{<-}'' keyword).
+\$value & Value to set object variable to.
 \end{args}
 
 \begin{example}{New type and object variables}
@@ -407,9 +442,6 @@ type new str {
     method info {args} {
         set (length) [my length]
         next {*}$args
-    }
-    method print {} {
-        puts $(value)
     }
     method length {} {
         string length $(value)
@@ -441,31 +473,29 @@ This package provides a few basic object variable types: \subcmdlink[0]{new}{var
 If you want to create your own datatype, check out the source code implementation for API documentation.
 
 \subsection{Type ``var''}
-The type \subcmdlink[0]{new}{var} is just an alternative way to create an object variable (same syntax as ``new'' method for \cmdlink{var} class).
+The type ``\subcmdlink[0]{new}{var}'' is just an alternative way to create an object variable (same syntax as ``new'' method for \cmdlink{var} class).
 It does not have any additional metadata or methods.
 \begin{syntax}
-\subcommand{new}{var} \$refName <{}<"="> \$value | "<-" \$varObj>
+\subcommand{new}{var} \$refName <\$value>
 \end{syntax}
 \begin{args}
 \$refName & Name of reference variable to tie to object. \\
-\$value & Value to set object variable to (using the optional ``\texttt{=}'' keyword). \\
-\$varObj & Other ``var'' to copy value from (using the ``\texttt{<-}'' keyword).
+\$value & Value to set object variable to.
 \end{args}
 \subsection{Type ``string''}
-The type \subcmdlink[0]{new}{string} does not do any validation on input (because in Tcl, ``everything is a string''), but additionally provides methods for getting string length and string index, and adds the field ``length'' to the variable info.
+The type ``\subcmdlink[0]{new}{string}'' does not do any validation on input (because in Tcl, ``everything is a string''), but additionally provides methods for getting string length and string index, and adds the field ``length'' to the variable info.
 \begin{syntax}
-\subcommand{new}{string} \$refName <{}<"="> \$value | "<-" \$stringObj>
+\subcommand{new}{string} \$refName <\$value>
 \end{syntax}
 \begin{args}
 \$refName & Name of reference variable to tie to object. \\
-\$value & Value to set object variable to (using the optional ``\texttt{=}'' keyword). \\
-\$stringObj & Other ``string'' to copy value from (using the ``\texttt{<-}'' keyword).
+\$value & String value.
 \end{args}
 The method \textit{length} returns the string length. This is the same as \texttt{\$stringObj info length}.
 \begin{syntax}
-\command{\$stringObj length}
+\$stringObj length
 \end{syntax}
-The method ``\textit{@}'' returns the character at the specified index.
+The method ``\texttt{@}'' returns the character at the specified index.
 \begin{syntax}
 \$stringObj @ \$i
 \end{syntax}
@@ -474,14 +504,13 @@ The method ``\textit{@}'' returns the character at the specified index.
 \end{args}
 \clearpage
 \subsection{Type ``bool'' (boolean)}
-The type \subcmdlink[0]{new}{bool} passes input through the Tcl \textit{expr} command and verifies that the result is indeed boolean. 
+The type ``\subcmdlink[0]{new}{bool}'' passes input through the Tcl \textit{expr} command and verifies that the result is indeed boolean. 
 \begin{syntax}
-\subcommand{new}{bool} \$refName <{}<"="> \$expr | "<-" \$boolObj>
+\subcommand{new}{bool} \$refName <\$expr>
 \end{syntax}
 \begin{args}
 \$refName & Name of reference variable to tie to object. \\
-\$expr & Tcl math expression to evaluate (using the optional ``\texttt{=}'' keyword). \\
-\$boolObj & Other ``bool'' to copy value from (using the ``\texttt{<-}'' keyword).
+\$expr & Tcl math expression.
 \end{args}
 
 In addition to the standard object variable methods, the ``bool'' type provides a shorthand if-statement control flow method:
@@ -513,14 +542,13 @@ world
 \end{example}
 \clearpage
 \subsection{Type ``int'' (integer)}
-The type \subcmdlink[0]{new}{int} passes input through the Tcl \textit{expr} command and verifies that the result is indeed an integer. 
+The type ``\subcmdlink[0]{new}{int}'' passes input through the Tcl \textit{expr} command and verifies that the result is indeed an integer. 
 \begin{syntax}
-\subcommand{new}{int} \$refName <{}<"="> \$expr | "<-" \$intObj>
+\subcommand{new}{int} \$refName <\$expr>
 \end{syntax}
 \begin{args}
 \$refName & Name of reference variable to tie to object. \\
-\$expr & Tcl math expression to evaluate (using the optional ``\texttt{=}'' keyword). \\
-\$intObj & Other ``int'' to copy value from (using the ``\texttt{<-}'' keyword).
+\$expr & Tcl math expression.
 \end{args}
 
 In addition to the standard assignment operator ``\texttt{=}'', the ``int'' type provides the increment/decrement assignment operators ``\texttt{+=}'' and ``\texttt{-=}''. 
@@ -529,8 +557,8 @@ In addition to the standard assignment operator ``\texttt{=}'', the ``int'' type
 \end{syntax}
 \begin{args}
 \$op & Assignment operator: \\
- & ``\texttt{+=}'' Increments the value of \texttt{\$expr} to the variable. \\
- & ``\texttt{-=}'' Decrements the value of \texttt{\$expr} to the variable. \\
+ & ``\texttt{+=}'' Increments the variable by the value of \texttt{\$expr}. \\
+ & ``\texttt{-=}'' Decrements the variable by the value of \texttt{\$expr}. \\
 \$expr & Tcl math expression to evaluate.
 \end{args}
 There are also two short-hand increment/decrement operators, ``\texttt{++}'' and ``\texttt{-{}-}'', which simply increment or decrement the integer object by 1.
@@ -557,26 +585,25 @@ for {new int i 0} {[$i] < 3} {$i ++} {
 \clearpage
 
 \subsection{Type ``float'' (double-precision floating-point decimal)}
-The type \subcmdlink[0]{new}{float} passes input through the Tcl \textit{expr} command and the \texttt{::tcl::mathfunc::double} command, ensuring that the value is a double-precision floating-point number.
+The type ``\subcmdlink[0]{new}{float}'' passes input through the Tcl \textit{expr} command and the \textit{::tcl::mathfunc::double} command, ensuring that the value is a double-precision floating-point number.
 \begin{syntax}
-\subcommand{new}{float} \$refName <{}<"="> \$expr | "<-" \$floatObj>
+\subcommand{new}{float} \$refName <\$expr>
 \end{syntax}
 \begin{args}
 \$refName & Name of reference variable to tie to object. \\
-\$expr & Tcl math expression to evaluate (using the optional ``\texttt{=}'' keyword). \\
-\$floatObj & Other ``float'' to copy value from (using the ``\texttt{<-}'' keyword).
+\$expr & Tcl math expression.
 \end{args}
 
-In addition to the standard assignment operator ``\texttt{=}'', the ``float'' type provides the assignment operators ``\texttt{+=}'', ``\texttt{-=}'', ``\texttt{*=}'', and ``\texttt{/=}''. 
+In addition to the standard assignment operator ``\texttt{=}'', the ``float'' type provides the following: 
 \begin{syntax}
-\$floatObj \$op \$expr 
+\$floatObj \$op \$expr
 \end{syntax}
 \begin{args}
 \$op & Assignment operator: \\
- & ``\texttt{+=}'' Adds the value of \texttt{\$expr} to the variable. \\
- & ``\texttt{-=}'' Subtracts the value of \texttt{\$expr} to the variable. \\
- & ``\texttt{*=}'' Multiplies the value of \texttt{\$expr} to the variable. \\
- & ``\texttt{/=}'' Divides the variable by the value of \texttt{\$expr}. \\
+& ``\texttt{+=}'' Adds the value of \texttt{\$expr} to the variable. \\
+& ``\texttt{-=}'' Subtracts the value of \texttt{\$expr} from the variable. \\
+& ``\texttt{*=}'' Multiplies the variable by the value of \texttt{\$expr}. \\
+& ``\texttt{/=}'' Divides  the variable by the value of \texttt{\$expr}. \\
 \$expr & Tcl math expression to evaluate.
 \end{args}
 
@@ -586,10 +613,11 @@ In addition to the standard assignment operator ``\texttt{=}'', the ``float'' ty
 proc hmean {x y} {
     new float x $x
     new float y $y
-    if {[$x] == 0 || [$y] == 0} {
-        return 0
+    [new float z] = {2*[$x]*[$y]}
+    if {[$z] != 0} {
+        $z /= {[$x] + [$y]}
     }
-    expr {2*[$x]*[$y]/([$x] + [$y])}
+    return [$z]
 }
 puts [hmean 1 2]; # 1.3333
 \end{lstlisting}
@@ -601,23 +629,23 @@ puts [hmean 1 2]; # 1.3333
 
 \clearpage
 \subsection{Type ``list''}
-The type \subcmdlink[0]{new}{list} validates that the input is a list, and provides methods for list indexing/setting and getting list length. Additionally, it adds the field ``length'' to the variable info.
+The type ``\subcmdlink[0]{new}{list}'' validates that the input is a list, and provides methods for list indexing/setting and getting list length. Additionally, it adds the field ``length'' to the variable info.
 \begin{syntax}
-\subcommand{new}{list} \$refName <{}<"="> \$value | "<-" \$listObj>
+\subcommand{new}{list} \$refName <\$value>
 \end{syntax}
 \begin{args}
 \$refName & Name of reference variable to tie to object. \\
-\$value & Value to set object variable to (using the optional ``\texttt{=}'' keyword). \\
-\$listObj & Other ``list'' to copy value from (using the ``\texttt{<-}'' keyword).
+\$value & List value.
 \end{args}
-The method \cmdlink{\$listObj length} returns the list length. This is the same as \texttt{\$listObj info length}.
+The method \textit{length} returns the list length. This is the same as ``\texttt{\$listObj info length}''.
 \begin{syntax}
-\command{\$listObj length}
+\$listObj length
 \end{syntax}
-The method \cmdlink{\$listObj @} acts as both list indexing and list setting, depending on whether the ``='' keyword is used.
-If indexing, it returns the value at the specified index. If setting, it sets the value and returns the object name.
+The method ``\texttt{@}'' acts as either list indexing or list setting, depending on whether the ``\texttt{=}'' keyword is used.
+If indexing, it returns the value at the specified index. 
+If setting, it sets the value and returns the object name.
 \begin{syntax}
-\command{\$listObj @} \$i ... <''='' \$value>
+\$listObj @ \$i ... <''='' \$value>
 \end{syntax}
 \begin{args}
 \$i ... & List indices. \\
@@ -626,7 +654,7 @@ If indexing, it returns the value at the specified index. If setting, it sets th
 
 \begin{example}{List example}
 \begin{lstlisting}
-new list list1 = {hello world}
+[new list list1] = {hello world}
 puts [$list1 length]; # 2
 $list1 @ 0 = "hey"
 $list1 @ 1 = "there"
@@ -643,18 +671,17 @@ exists 1 length 3 type list value {hey there world}
 \end{example}
 \clearpage
 \subsection{Type ``dict''}
-The type \subcmdlink[0]{new}{dict} validates that the input is a Tcl dictionary, and provides methods for getting/setting/unsetting dictionary values, checking if values exist, and getting the dictionary size. Additionally, it adds the field ``size'' to the variable info.
+The type ``\subcmdlink[0]{new}{dict}'' validates that the input is a Tcl dictionary, and provides methods for getting/setting/unsetting dictionary values, checking if values exist, and getting the dictionary size. Additionally, it adds the field ``size'' to the variable info.
 \begin{syntax}
-\subcommand{new}{dict} \$refName <{}<"="> \$value | "<-" \$tObj>
+\subcommand{new}{dict} \$refName <\$value>
 \end{syntax}
 \begin{args}
 \$refName & Name of reference variable to tie to object. \\
-\$value & Value to set object variable to (using the optional ``\texttt{=}'' keyword). \\
-\$dictObj & Other ``dict'' to copy value from (using the ``\texttt{<-}'' keyword).
+\$value & Dictionary value.
 \end{args}
-The method \cmdlink{\$dictObj size} returns the dictionary size. This is the same as \texttt{\$dictObj info size}.
+The method \$dictObj size returns the dictionary size. This is the same as ``\texttt{\$dictObj info size}''.
 \begin{syntax}
-\command{\$dictObj size}
+\$dictObj size
 \end{syntax}
 The methods \textit{set} and \textit{unset} set and unset values in the dictionary, and return the object name.
 The method \textit{get} returns values in the dictionary, and the method \textit{exists} returns whether the key pairing exists.
@@ -678,7 +705,7 @@ The method \textit{get} returns values in the dictionary, and the method \textit
 \begin{example}{Dictionary example}
 \begin{lstlisting}
 # Create dictionary record
-new dict record = {
+new dict record {
     name {John Doe}
     address {
         streetAddress {123 Main Street}
