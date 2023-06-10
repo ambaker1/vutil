@@ -164,10 +164,10 @@ The command \cmdlink{tie} is a solution for this problem, using variable traces 
 For example, if an object is tied to a local procedure variable, the object will be destroyed when the procedure returns.
 Tie is separate from lock; a tie will override a lock, and a lock will override a tie. 
 \begin{syntax}
-\command{tie} \$varName <\$object>
+\command{tie} \$refName <\$object>
 \end{syntax}
 \begin{args}
-\$varName & Variable name to tie to object. \\
+\$refName & Name of reference variable to tie to object. \\
 \$object & Object to tie variable to. Default self-ties (uses current value).
 \end{args}
 
@@ -248,8 +248,8 @@ puts [subst $$a]; # 51
 \clearpage
 \section{Object Variable Class}
 The TclOO class \cmdlink{var} creates linked object variables that are tied to local variables, using \cmdlink{link} and \cmdlink{tie}.
-The main concept of the object variable is that if called as a command with no arguments, it will return the object variable value. 
-All object variable methods that modify the object variable return the object name, allowing for nested object variable modification calls.
+
+Object variables can be manipulated directly with Tcl commands, and calling the object variable directly as a command with no arguments (e.g. \texttt{[\$varObj]}) returns the object variable value.
 
 \begin{syntax}
 \command{var} new \$refName <\$value> \\
@@ -265,36 +265,29 @@ var create \$objName \$refName <\$value>
 \begin{lstlisting}
 # Example showing how object variables behave in procedures
 proc foo {value} {
-    var create myObj a
-    puts [$a = $value]; # ::myObj
-    puts [info object isa object $a]; # 1
-    append $a { world}
-    puts [$a]; # hello world
-    return $a; # Returns name of object, not value
+    # Create named object with reference variable "result"
+    var create myObj result $value
+    append $result { world}
+    return [list $result [$result]]; # Returns name and value of object
 }
-set a [foo hello]; # Not the same "a"
-puts $a; # ::myObj
-puts [info object isa object $a]; # 0 (object was deleted when procedure returned)
+set result [foo hello]; # Not the same "result"
+lassign $result name value
+puts $name; # ::myObj
+puts $value; # hello world
+puts [info object isa object $name]; # 0 (object was deleted when procedure returned)
 \end{lstlisting}
 \tcblower
 \begin{lstlisting}
 ::myObj
-1
 hello world
-::myObj
 0
 \end{lstlisting}
 \end{example}
 
 
 \clearpage
-\subsection{Object Variable Access}
+\subsection{Object Variable Operators}
 In addition to being able to manipulate object variables directly with Tcl commands, variables can also be manipulated with object variable operators. 
-
-Calling the object variable directly (e.g. \texttt{[\$varObj]}) returns the value stored in the object variable. 
-\begin{syntax}
-\$varObj
-\end{syntax}
 
 The operator ``\texttt{\methodlink[0]{var}{=}}'' assigns the value of the object variable, and returns the name of the object.
 \begin{syntax}
@@ -491,7 +484,7 @@ The type ``\subcmdlink[0]{new}{string}'' does not do any validation on input (be
 \$refName & Name of reference variable to tie to object. \\
 \$value & String value.
 \end{args}
-The method \textit{length} returns the string length. This is the same as \texttt{\$stringObj info length}.
+The method \textit{length} returns the string length. This is the same as ``\texttt{\$stringObj info length}''.
 \begin{syntax}
 \$stringObj length
 \end{syntax}
@@ -519,7 +512,7 @@ In addition to the standard object variable methods, the ``bool'' type provides 
 \end{syntax}
 \begin{args}
 \$body1 & Body to evaluate if boolean is true. \\
-\$body2 & Body to evaluate if boolean is false (optional, required with ``:'' keyword).
+\$body2 & Body to evaluate if boolean is false (optional, required with ``\texttt{:}'' keyword).
 \end{args}
 
 \begin{example}{String and boolean example}
