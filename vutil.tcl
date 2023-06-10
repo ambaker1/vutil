@@ -378,19 +378,21 @@ proc ::vutil::InitObj {objName arrayName args} {
 # var --
 #
 # Class for object variables that store a value and have garbage collection
+# Note: Returns [self] for any method that modifies the object.
+# Returns $value only for "unknown", and returns metadata with other methods.
 # 
 # Object creation:
-# var new $refName <arg ...> <<"="> $value> <"<-" $varObj>
-# var create $name $refName <<"="> $value> <"<-" $varObj>
+# var new $refName <$value>
+# var create $name $refName <$value>
 #
 # Arguments:
 # refName       Reference variable to tie to the object.
-# value         Value to assign to the object variable ("=" keyword)
-# var           Variable object to assign value from ("<-" option)
+# value         Value to assign to the object variable.
 # name          Name of object (for "create" method)
 #
 # Object methods:
 # $varObj                   # Get object variable value
+# $varObj print <arg ...>   # Print object variable value
 # $varObj info <$field>     # Get object variable info array (or single value)
 # $varObj = $value          # Value assignment
 # $varObj1 <- $varObj2      # Object assignment (must be same class)
@@ -401,28 +403,18 @@ proc ::vutil::InitObj {objName arrayName args} {
     constructor {refName args} {
         # Check arity
         if {[llength $args] > 2} {
-            return -code error "wrong # args: want \"var new refName ??=?\
-                    value | <- object?\" or \"var create name refName ??=?\
-                    value | <- object?\""
+            return -code error "wrong # args: want \"var new refName ?value?\"\
+                    or \"var create name refName ?value?\""
         }
         # Initialize object
         set (type) [my Type]
         set (exists) 0
         # Set up initialization tracer
         trace add variable (value) {read write} [list ::vutil::InitObj [self]]
-        # Interpret input
+        # Initialize if value input is provided
         if {[llength $args] == 1} {
             # var new $refName $value
-            my = [lindex $args 0]; # Assign value
-        } elseif {[llength $args] == 2} {
-            # var new $refName = $value
-            # var new $refName <- $object
-            lassign $args op value
-            if {$op ni {= <-}} {
-                return -code error "unknown assignment operator \"$op\":\
-                        want \"=\" or \"<-\""
-            }
-            my $op $value
+            uplevel 1 [list [self] = [lindex $args 0]]; # Assign value
         }
         # Tie and link object
         upvar 1 $refName refVar
@@ -431,19 +423,22 @@ proc ::vutil::InitObj {objName arrayName args} {
     }
     
     # Type --
-    # Returns the type of object. Overwritten by "type add"
-    method Type {} {return var}
+    #
+    # Hard-coded variable type. Overwritten by "type add"
     
+    method Type {} {
+        return var
+    }
+
     # info --
     #
     # Get meta data on object
-    # Always has (exists) and (type), if (exists), has (value)
+    # Always has (exists) and (type), and (value) if (exists) is true
     #
     # Syntax:
     # $varObj info <$field>
     #
     # Arguments:
-    # var       Object name
     # field     Optional field. Default "" returns all.
     
     method info {{field ""}} {
@@ -456,13 +451,13 @@ proc ::vutil::InitObj {objName arrayName args} {
         }
     }
     
+    
     # GetValue (unknown) --
     #
     # Object value query (returns value).
     #
     # Syntax:
-    # my GetValue
-    # $varObj
+    # $varObj 
     
     method GetValue {} {
         return $(value)
@@ -475,11 +470,26 @@ proc ::vutil::InitObj {objName arrayName args} {
     }
     unexport unknown
     
+    # print --
+    #
+    # Print value of object (shorthand for puts)
+    #
+    # Syntax:
+    # $varObj print <-nonewline> <$channelID>
+    #
+    # Arguments:
+    # -nonewline        Print without newline
+    # channelID         Channel ID open for writing. Default stdout (Tcl)
+    
+    method print {args} {
+        puts {*}$args $(value)
+    }
+    
     # SetValue (=) --
     #
     # Value assignment (uses private method "SetValue"). 
     # Modify "SetValue" to add data validation and add metadata.
-    # Returns object value
+    # Returns object name
     #
     # Syntax:
     # my SetValue $value
@@ -491,6 +501,7 @@ proc ::vutil::InitObj {objName arrayName args} {
     
     method SetValue {value} {
         set (value) $value
+        return [self]
     }
     method = {args} {
         tailcall my SetValue {*}$args
@@ -500,6 +511,7 @@ proc ::vutil::InitObj {objName arrayName args} {
     # SetObject (<-) --
     # 
     # Right-to-left direct assignment (must be same class)
+    # Right object must exist.
     # Returns object name
     #
     # Syntax:
@@ -530,20 +542,22 @@ proc ::vutil::InitObj {objName arrayName args} {
     
     # CopyObject (-->) --
     #
-    # Copy object to new variable
+    # Copy object to new variable (returns new object name)
     #
     # Syntax:
-    # my CopyObject $refName <$args ...>
-    # $varObj --> $refName <$args ...>
+    # my CopyObject $refName
+    # $varObj --> $refName
     #
     # Arguments:
     # varObj        Variable object
     # refName       Reference variable to copy to
-    # $args ...     Optional arguments to pass to ::oo::copy
     
-    method CopyObject {refName args} {
-        upvar 1 $refName refVar
-        ::vutil::link [::vutil::tie refVar [::oo::copy [self] {*}$args]]
+    method CopyObject {refName} {
+        set newObj [uplevel 1 [list [info object class [self]] new $refName]]
+        if {$(exists)} {
+            $newObj <- [self]
+        }
+        return $newObj
     }
     method --> {refName args} {
         tailcall my CopyObject $refName {*}$args
@@ -724,15 +738,19 @@ proc ::vutil::new {type varName args} {
     }
     method += {expr} {
         incr (value) [uplevel 1 [list expr $expr]]
+        return [self]
     }
     method -= {expr} {
         incr (value) [uplevel 1 [list expr -($expr)]]
+        return [self]
     }
     method ++ {} {
         incr (value)
+        return [self]
     }
     method -- {} {
         incr (value) -1
+        return [self]
     }
     export += -= ++ --
 }
@@ -755,15 +773,19 @@ proc ::vutil::new {type varName args} {
     }
     method += {expr} {
         set (value) [expr {$(value) + [uplevel 1 [list expr $expr]]}]
+        return [self]
     }
     method -= {expr} {
         set (value) [expr {$(value) - [uplevel 1 [list expr $expr]]}]
+        return [self]
     }
     method *= {expr} {
         set (value) [expr {$(value) * [uplevel 1 [list expr $expr]]}]
+        return [self]
     }
     method /= {expr} {
         set (value) [expr {$(value) / [uplevel 1 [list expr $expr]]}]
+        return [self]
     }
     export += -= *= /=
 }
@@ -819,8 +841,8 @@ proc ::vutil::new {type varName args} {
     # Method to get or set a value in a list
     #
     # Syntax:
-    # $list @ $i ?$i ...? = $value; # Returns object
-    # $list @ ?$i ...?; # Returns value
+    # $list @ $i ?$i ...? = $value
+    # $list @ ?$i ...?
     
     method @ {args} {
         if {[llength $args] >= 3 && [lindex $args end-1] eq "="} {
@@ -853,6 +875,11 @@ proc ::vutil::new {type varName args} {
         }
         next $value
     }
+    method print {args} {
+        dict for {key value} $(value) {
+            puts {*}$args [list $key $value]
+        }
+    }
     method info {args} {
         set (size) [my size]
         next {*}$args
@@ -862,9 +889,11 @@ proc ::vutil::new {type varName args} {
     }
     method set {key args} {
         dict set (value) $key {*}$args
+        return [self]
     }
     method unset {key args} {
         dict unset (value) $key {*}$args
+        return [self]
     }
     method exists {key args} {
         dict exists $(value) $key {*}$args
@@ -875,4 +904,4 @@ proc ::vutil::new {type varName args} {
 }
 
 # Finally, provide the package
-package provide vutil 0.3
+package provide vutil 0.4
