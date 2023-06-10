@@ -2,8 +2,8 @@ package require tin
 tin import vutil
 # Example showing how object variables behave in procedures
 proc foo {value} {
-    obj create myObj a = $value
-    puts $a; # ::myObj
+    var create myObj a
+    puts [$a = $value]; # ::myObj
     puts [info object isa object $a]; # 1
     append $a { world}
     puts [$a]; # hello world

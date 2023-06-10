@@ -23,16 +23,17 @@ puts [rem 10 4]; # 2
 proc hmean {x y} {
     new float x $x
     new float y $y
-    if {[$x] == 0 || [$y] == 0} {
-        return 0
+    [new float z] = {2*[$x]*[$y]}
+    if {[$z] != 0} {
+        $z /= {[$x] + [$y]}
     }
-    expr {2*[$x]*[$y]/([$x] + [$y])}
+    return [$z]
 }
 puts [hmean 1 2]; # 1.3333
 
 # For-loop, reimagined with types 
 # Note: this is not an elegant example, just an example of vutil features.
-new list x = {1 2 3}
+[new list x] = {1 2 3}
 for {new int i 0} {[$i] < [$x length]} {$i ++} {
     new float element [$x @ [$i]]
     $x @ [$i] = $element

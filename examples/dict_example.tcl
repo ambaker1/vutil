@@ -2,7 +2,7 @@ package require tin
 tin import vutil
 
 # Create dictionary record
-new dict record = {
+new dict record {
     name {John Doe}
     address {
         streetAddress {123 Main Street}
