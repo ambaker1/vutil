@@ -392,6 +392,7 @@ proc ::vutil::InitObj {objName arrayName args} {
 #
 # Object methods:
 # $varObj                   # Get object variable value
+# $varObj print <arg ...>   # Print object variable value
 # $varObj info <$field>     # Get object variable info array (or single value)
 # $varObj = $value          # Value assignment
 # $varObj1 <- $varObj2      # Object assignment (must be same class)
@@ -401,7 +402,7 @@ proc ::vutil::InitObj {objName arrayName args} {
     variable ""; # Array of object data
     constructor {refName args} {
         # Check arity
-        if {[llength $args] > 1} {
+        if {[llength $args] > 2} {
             return -code error "wrong # args: want \"var new refName ?value?\"\
                     or \"var create name refName ?value?\""
         }
@@ -410,11 +411,11 @@ proc ::vutil::InitObj {objName arrayName args} {
         set (exists) 0
         # Set up initialization tracer
         trace add variable (value) {read write} [list ::vutil::InitObj [self]]
-        # Initialize if value is provided
+        # Initialize if value input is provided
         if {[llength $args] == 1} {
             # var new $refName $value
             uplevel 1 [list [self] = [lindex $args 0]]; # Assign value
-        } 
+        }
         # Tie and link object
         upvar 1 $refName refVar
         ::vutil::link [::vutil::tie refVar [self]]
@@ -422,19 +423,22 @@ proc ::vutil::InitObj {objName arrayName args} {
     }
     
     # Type --
-    # Returns the type of object. Overwritten by "type add"
-    method Type {} {return var}
+    #
+    # Hard-coded variable type. Overwritten by "type add"
     
+    method Type {} {
+        return var
+    }
+
     # info --
     #
     # Get meta data on object
-    # Always has (exists) and (type), if (exists), has (value)
+    # Always has (exists) and (type), and (value) if (exists) is true
     #
     # Syntax:
     # $varObj info <$field>
     #
     # Arguments:
-    # var       Object name
     # field     Optional field. Default "" returns all.
     
     method info {{field ""}} {
@@ -446,6 +450,25 @@ proc ::vutil::InitObj {objName arrayName args} {
             return -code error "unknown info field \"$field\"" 
         }
     }
+    
+    
+    # GetValue (unknown) --
+    #
+    # Object value query (returns value).
+    #
+    # Syntax:
+    # $varObj 
+    
+    method GetValue {} {
+        return $(value)
+    }
+    method unknown {args} {
+        if {[llength $args] == 0} {
+            tailcall my GetValue
+        }
+        next {*}$args
+    }
+    unexport unknown
     
     # print --
     #
@@ -461,25 +484,6 @@ proc ::vutil::InitObj {objName arrayName args} {
     method print {args} {
         puts {*}$args $(value)
     }
-    
-    # GetValue (unknown) --
-    #
-    # Object value query (returns value).
-    #
-    # Syntax:
-    # my GetValue
-    # $varObj
-    
-    method GetValue {} {
-        return $(value)
-    }
-    method unknown {args} {
-        if {[llength $args] == 0} {
-            tailcall my GetValue
-        }
-        next {*}$args
-    }
-    unexport unknown
     
     # SetValue (=) --
     #
@@ -507,6 +511,7 @@ proc ::vutil::InitObj {objName arrayName args} {
     # SetObject (<-) --
     # 
     # Right-to-left direct assignment (must be same class)
+    # Right object must exist.
     # Returns object name
     #
     # Syntax:
@@ -540,17 +545,19 @@ proc ::vutil::InitObj {objName arrayName args} {
     # Copy object to new variable (returns new object name)
     #
     # Syntax:
-    # my CopyObject $refName <$args ...>
-    # $varObj --> $refName <$args ...>
+    # my CopyObject $refName
+    # $varObj --> $refName
     #
     # Arguments:
     # varObj        Variable object
     # refName       Reference variable to copy to
-    # $args ...     Optional arguments to pass to ::oo::copy
     
-    method CopyObject {refName args} {
-        upvar 1 $refName refVar
-        ::vutil::link [::vutil::tie refVar [::oo::copy [self] {*}$args]]
+    method CopyObject {refName} {
+        set newObj [uplevel 1 [list [info object class [self]] new $refName]]
+        if {$(exists)} {
+            $newObj <- [self]
+        }
+        return $newObj
     }
     method --> {refName args} {
         tailcall my CopyObject $refName {*}$args
