@@ -2,13 +2,13 @@ package require tin
 tin import vutil
 # Example showing how object variables behave in procedures
 proc foo {value} {
-    var create myObj a
-    puts [$a = $value]; # ::myObj
-    puts [info object isa object $a]; # 1
-    append $a { world}
-    puts [$a]; # hello world
-    return $a; # Returns name of object, not value
+    # Create named object with reference variable "result"
+    var create myObj result $value
+    append $result { world}
+    return [list $result [$result]]; # Returns name and value of object
 }
-set a [foo hello]; # Not the same "a"
-puts $a; # ::myObj
-puts [info object isa object $a]; # 0 (object was deleted when procedure returned)
+set result [foo hello]; # Not the same "result"
+lassign $result name value
+puts $name; # ::myObj
+puts $value; # hello world
+puts [info object isa object $name]; # 0 (object was deleted when procedure returned)
