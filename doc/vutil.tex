@@ -395,17 +395,24 @@ These classes do not need to be subclasses of ``\texttt{::vutil::var}'', but it 
 \$class & Type class.
 \end{args}
 
+To remove a type, use the method \subcmdlink[0]{type}{remove}. 
+This does not destroy the associated class, but simply removes the class from the type list. 
+\begin{syntax}
+\subcommand{type}{remove} \$type
+\end{syntax}
+\begin{args}
+\$type & Name of type. 
+\end{args}
+
+\clearpage
+\subsection{Type Queries}
 A list of all defined types can be queried with the method \subcmdlink[0]{type}{names}. 
 \begin{syntax}
 \subcommand{type}{names}
 \end{syntax}
 
-Types can be removed with with the method \subcmdlink[0]{type}{remove},
-the existence of a type can be queried with the method \subcmdlink[0]{type}{exists}, and 
+The existence of a type can be queried with the method \subcmdlink[0]{type}{exists}, and 
 the class associated with a type can be queried with the method \subcmdlink[0]{type}{class}. 
-\begin{syntax}
-\subcommand{type}{remove} \$type
-\end{syntax}
 \begin{syntax}
 \subcommand{type}{exists} \$type
 \end{syntax}
@@ -415,6 +422,29 @@ the class associated with a type can be queried with the method \subcmdlink[0]{t
 \begin{args}
 \$type & Name of type. 
 \end{args}
+
+The method \subcmdlink[0]{type}{isa} checks if an object is of a specific type. 
+If the type or object do not exist, it returns an error.
+
+\begin{syntax}
+\subcommand{type}{isa} \$type \$objName
+\end{syntax}
+\begin{args}
+\$type & Name of type. \\
+\$objName & Name of object.
+\end{args}
+
+\begin{example}{Type assertion}
+\begin{lstlisting}
+proc foo {bar} {
+    if {![type isa list $bar]} {
+        return -code error "bar must be a list object" 
+    }
+    $bar @ end
+}
+\end{lstlisting}
+\end{example}
+
 
 \clearpage
 \subsection{Creating Type Variables}
