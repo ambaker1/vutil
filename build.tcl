@@ -1,6 +1,6 @@
 package require tin 0.7.2
 tin import tcltest
-set version 0.4
+set version 0.5
 set config [dict create VERSION $version]
 tin bake src build $config
 tin bake doc/template/version.tin doc/template/version.tex $config
@@ -350,6 +350,24 @@ test new_bool {
         return hey
     }
 } -result {hey}
+
+test isa_1 {
+    # Test whether "isa" works
+} -body {
+    list [type isa bool $flag] [type isa list $flag]
+} -result {1 0} 
+
+test isa_2 {
+    # Test whether "isa" works (check fail 1)
+} -body {
+    type isa pool $flag
+} -result {type "pool" does not exist} -returnCodes 1 
+
+test isa_3 {
+    # Test whether "isa" works (check fail 2)
+} -body {
+    type isa list hi
+} -result {"hi" is not an object} -returnCodes 1 
 
 test var_print {
     # Ensure that print method works

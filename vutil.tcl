@@ -523,10 +523,10 @@ proc ::vutil::InitObj {objName arrayName args} {
 
     method SetObject {objName} {
         if {![info object isa object $objName]} {
-            return -code error "$objName is not an object"
+            return -code error "\"$objName\" is not an object"
         }
         if {![info object class $objName [info object class [self]]]} {
-            return -code error "$objName not of same class as [self]"
+            return -code error "\"$objName\" not of same class as \"[self]\""
         }
         # Set the object info array equal to the other one.
         if {![$objName info exists]} {
@@ -665,10 +665,25 @@ proc ::vutil::InitObj {objName arrayName args} {
     
     method class {type} {
         if {![my exists $type]} {
-            return -code error "type $type does not exist"
+            return -code error "type \"$type\" does not exist"
         }
         return $typeClass($type)
     }
+    
+    # type isa --
+    #
+    # Check if an object is of a specific type
+    #
+    # Syntax:
+    # type isa $type $objName
+    
+    method isa {type objName} {
+        if {![info object isa object $objName]} {
+            return -code error "\"$objName\" is not an object"
+        }
+        info object class $objName [my class $type]
+    }
+    
 }; # end object definition
 
 # new --    
@@ -677,8 +692,8 @@ proc ::vutil::InitObj {objName arrayName args} {
 #
 # new $type $varName <<"="> $value> <"<-" $object>
 
-proc ::vutil::new {type varName args} {
-    tailcall [type class $type] new $varName {*}$args
+proc ::vutil::new {type args} {
+    tailcall [type class $type] new {*}$args
 }
 
 # BASIC DATA TYPES
@@ -904,4 +919,4 @@ proc ::vutil::new {type varName args} {
 }
 
 # Finally, provide the package
-package provide vutil 0.4
+package provide vutil 0.5
