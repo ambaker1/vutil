@@ -672,7 +672,7 @@ proc ::vutil::InitObj {objName arrayName args} {
     
     # type isa --
     #
-    # Check if an object is of a specific type
+    # Check if an object is of a specific type (or a subtype)
     #
     # Syntax:
     # type isa $type $objName
@@ -681,7 +681,7 @@ proc ::vutil::InitObj {objName arrayName args} {
         if {![info object isa object $objName]} {
             return -code error "\"$objName\" is not an object"
         }
-        info object class $objName [my class $type]
+        info object isa typeof $objName [my class $type]
     }
     
 }; # end object definition
