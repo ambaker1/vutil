@@ -1,6 +1,6 @@
 package require tin 0.7.2
 tin import tcltest
-set version 0.5.1
+set version 0.5.2
 set config [dict create VERSION $version]
 tin bake src build $config
 tin bake doc/template/version.tin doc/template/version.tex $config
@@ -148,8 +148,14 @@ test tie2 {
     tie b $b; # Now b is tied
     $b destroy
     lappend result [info exists b]; # true, does not delete variable
-    
-} -result {1 1 0 0 1 1 0 1 1}
+    # Ensure that retying a variable deletes the old 
+    tie a [fruit new]
+    set b $a
+    tie a $a
+    lappend result [info object isa object $b]; # true
+    tie a [fruit new]
+    lappend result [info object isa object $b]; # false
+} -result {1 1 0 0 1 1 0 1 1 1 0}
 
 test self-tie {
     # Ensure that you can self-tie a variable
