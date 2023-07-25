@@ -207,10 +207,12 @@ proc ::vutil::tie {varName args} {
     if {![info object isa object $objName]} {
         return -code error "\"$objName\" is not an object"
     }
-    # Remove any existing lock and tie traces
+    # Remove any existing lock trace and remove tie traces if self-tying
     if {[info exists refVar]} {
         unlock refVar
-        untie refVar
+        if {$objName eq $refVar} {
+            untie refVar
+        }
     }
     # Set the value of the variable and add TieTrace
     set refVar $objName
@@ -919,4 +921,4 @@ proc ::vutil::new {type args} {
 }
 
 # Finally, provide the package
-package provide vutil 0.5.1
+package provide vutil 0.5.2
