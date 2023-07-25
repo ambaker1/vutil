@@ -397,6 +397,7 @@ proc ::vutil::InitObj {objName arrayName args} {
 # $varObj print <arg ...>   # Print object variable value
 # $varObj info <$field>     # Get object variable info array (or single value)
 # $varObj = $value          # Value assignment
+# $varObj := $expr          # Expression assignment
 # $varObj1 <- $varObj2      # Object assignment (must be same class)
 # $varObj --> $refName      # Copy object (and set up tie/link)
 
@@ -508,7 +509,10 @@ proc ::vutil::InitObj {objName arrayName args} {
     method = {args} {
         tailcall my SetValue {*}$args
     }
-    export =
+    method := {expr} {
+        my = [uplevel 1 [list expr $expr]]
+    }
+    export = :=
   
     # SetObject (<-) --
     # 
@@ -715,8 +719,7 @@ proc ::vutil::new {type args} {
 # ?         Shorthand if-statement (tailcalls "if")
 
 ::vutil::type new bool {
-    method SetValue {expr} {
-        set value [uplevel 1 [list expr $expr]]
+    method SetValue {value} {
         if {![string is boolean -strict $value]} {
             return -code error "expected boolean value but got \"$value\""
         }
@@ -740,25 +743,24 @@ proc ::vutil::new {type args} {
 # Passes input through expr and asserts integer
 #
 # Additional methods:
-# +=        Increment by value (pass through expr)
-# -=        Decrement by value (pass through expr)
+# +=        Increment by value
+# -=        Decrement by value
 # ++        Increment by 1
 # --        Decrement by 1
 
 ::vutil::type new int {
-    method SetValue {expr} {
-        set value [uplevel 1 [list expr $expr]]
+    method SetValue {value} {
         if {![string is integer -strict $value]} {
             return -code error "expected integer value but got \"$value\""
         }
         next $value
     }
-    method += {expr} {
-        incr (value) [uplevel 1 [list expr $expr]]
+    method += {incr} {
+        incr (value) $incr
         return [self]
     }
-    method -= {expr} {
-        incr (value) [uplevel 1 [list expr -($expr)]]
+    method -= {incr} {
+        incr (value) [expr -($incr)]
         return [self]
     }
     method ++ {} {
@@ -784,24 +786,23 @@ proc ::vutil::new {type args} {
 # /=        Divide by value
 
 ::vutil::type new float {
-    method SetValue {expr} {
-        set value [::tcl::mathfunc::double [uplevel 1 [list expr $expr]]]
-        next $value
+    method SetValue {value} {
+        next [::tcl::mathfunc::double $value]
     }
-    method += {expr} {
-        set (value) [expr {$(value) + [uplevel 1 [list expr $expr]]}]
+    method += {value} {
+        set (value) [expr {$(value) + $value}]
         return [self]
     }
-    method -= {expr} {
-        set (value) [expr {$(value) - [uplevel 1 [list expr $expr]]}]
+    method -= {value} {
+        set (value) [expr {$(value) - $value]}]
         return [self]
     }
-    method *= {expr} {
-        set (value) [expr {$(value) * [uplevel 1 [list expr $expr]]}]
+    method *= {value} {
+        set (value) [expr {$(value) * $value]}]
         return [self]
     }
-    method /= {expr} {
-        set (value) [expr {$(value) / [uplevel 1 [list expr $expr]]}]
+    method /= {value} {
+        set (value) [expr {$(value) / $value]}]
         return [self]
     }
     export += -= *= /=
