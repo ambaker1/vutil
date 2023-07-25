@@ -404,7 +404,7 @@ proc ::vutil::InitObj {objName arrayName args} {
     variable ""; # Array of object data
     constructor {refName args} {
         # Check arity
-        if {[llength $args] > 2} {
+        if {[llength $args] > 1} {
             return -code error "wrong # args: want \"var new refName ?value?\"\
                     or \"var create name refName ?value?\""
         }
