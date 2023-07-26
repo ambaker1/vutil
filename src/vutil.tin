@@ -876,23 +876,20 @@ proc ::vutil::new {type args} {
     # $list @ ?$i ...?
     
     method @ {args} {
-        if {[llength $args] >= 3} {
-            switch [lindex $args end-1] {
-                = { # $list @ $i ?$i ...? = $value
-                    set value [lindex $args end]
-                    lset (value) {*}[lrange $args 0 end-2] $value
-                    return [self]
-                }
-                := { # $list @ $i ?$i ...? := $expr
-                    set expr [lindex $args end]
-                    lset (value) {*}[lrange $args 0 end-2] [expr $expr]
-                    return [self]
-                }
+        switch [lindex $args end-1] {
+            = { # $list @ $i ?$i ...? = $value
+                set value [lindex $args end]
+            }
+            := { # $list @ $i ?$i ...? := $expr
+                set value [uplevel 1 [list expr [lindex $args end]]]
+            }
+            default { # $list @ ?$i ...?
+                return [lindex $(value) {*}$args]
             }
         }
-        # Default query
-        # $list @ ?$i ...?
-        return [lindex $(value) {*}$args]
+        # Assign and return self
+        lset (value) {*}[lrange $args 0 end-2] $value
+        return [self]
     }
     export @
 }

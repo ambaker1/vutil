@@ -299,8 +299,10 @@ test new_list {
     $list1 @ 1 = "there"
     $list1 @ end+1 = "world"
     assert {[$list1 @ end] eq "world"}
+    set a 5
+    $list1 @ end+1 := {$a + 1}
     $list1 info
-} -result {exists 1 length 3 type list value {hey there world}}
+} -result {exists 1 length 4 type list value {hey there world 6}}
 
 test new_dict {
     # Test all features of the "dict" type
