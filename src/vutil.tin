@@ -418,14 +418,14 @@ proc ::vutil::InitObj {objName arrayName args} {
         # Initialize if value input is provided
         if {[llength $args] == 1} {
             # var new $refName $value
-            uplevel 1 [list [self] = [lindex $args 0]]; # Assign value
+            my = [lindex $args 0]; # Assign value
         }
         # Tie and link object
         upvar 1 $refName refVar
         ::vutil::link [::vutil::tie refVar [self]]
         return
     }
-    
+
     # Type --
     #
     # Hard-coded variable type. Overwritten by "type add"
@@ -571,16 +571,21 @@ proc ::vutil::InitObj {objName arrayName args} {
     # refName       Reference variable to copy to
     
     method CopyObject {refName} {
-        set newObj [uplevel 1 [list [info object class [self]] new $refName]]
-        if {$(exists)} {
-            $newObj <- [self]
-        }
-        return $newObj
+        # Copy, tie, and link the object
+        upvar 1 $refName refVar
+        ::vutil::link [::vutil::tie refVar [::oo::copy [self]]]
+        return $refVar
     }
-    method --> {refName args} {
-        tailcall my CopyObject $refName {*}$args
+    method --> {refName} {
+        tailcall my CopyObject $refName
     }
     export -->
+    # <cloned> method for establishing initialization trace
+    # See documentation for oo::copy command
+    method <cloned> {srcObj} {
+        trace add variable (value) {read write} [list ::vutil::InitObj [self]]
+        next $srcObj
+    }
 }
 
 # type --
