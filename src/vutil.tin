@@ -776,8 +776,8 @@ proc ::vutil::new {type args} {
         incr (value) $incr
         return [self]
     }
-    method -= {incr} {
-        incr (value) [expr -($incr)]
+    method -= {decr} {
+        incr (value) [::tcl::mathop - $decr]
         return [self]
     }
     method ++ {} {
