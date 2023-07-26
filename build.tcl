@@ -1,6 +1,7 @@
 package require tin 0.7.2
 tin import tcltest
-set version 0.5.2
+tin import assert from tin
+set version 0.6
 set config [dict create VERSION $version]
 tin bake src build $config
 tin bake doc/template/version.tin doc/template/version.tex $config
@@ -181,7 +182,7 @@ test obj_untie {
     untie x
     set y $x
     $x = {hello}
-    tin assert {[$y] eq {hello}}
+    assert {[$y] eq {hello}}
     unset $y
     info exists $x
 } -result 0
@@ -192,6 +193,12 @@ test obj_new {
     [var new a] = foo
     $a
 } -result {foo}
+
+test obj_ref {
+    # Verify that the "&" method returns "self"
+} -body {
+    $a &
+} -result $a
 
 test obj_create {
     # Create an object with name
@@ -254,8 +261,8 @@ test obj_copy_error {
     # Do not permit copying from blank variable
 } -body {
     var new z
-    tin assert {[catch {$x <- $z}] == 1}; # z does not exist
-    tin assert {[catch {$z --> x}] == 0}; # overwrites x
+    assert {[catch {$x <- $z}] == 1}; # z does not exist
+    assert {[catch {$z --> x}] == 0}; # overwrites x
     $x info exists
 } -result {0}
 
@@ -278,7 +285,7 @@ test new_string {
     # Test all features of "string" type
 } -body {
     [new string string1] = {hello}
-    tin assert {[$string1 length] == 5}
+    assert {[$string1 length] == 5}
     append $string1 { world}
     $string1 info
 } -result {exists 1 length 11 type string value {hello world}}
@@ -287,13 +294,15 @@ test new_list {
     # Test all features of "list" type
 } -body {
     [new list list1] = {hello world}
-    tin assert {[$list1 length] == 2}
+    assert {[$list1 length] == 2}
     $list1 @ 0 = "hey"
     $list1 @ 1 = "there"
     $list1 @ end+1 = "world"
-    tin assert {[$list1 @ end] eq "world"}
+    assert {[$list1 @ end] eq "world"}
+    set a 5
+    $list1 @ end+1 := {$a + 1}
     $list1 info
-} -result {exists 1 length 3 type list value {hey there world}}
+} -result {exists 1 length 4 type list value {hey there world 6}}
 
 test new_dict {
     # Test all features of the "dict" type
@@ -302,12 +311,12 @@ test new_dict {
     $dict1 set a 5
     $dict1 set b 3
     $dict1 set c 5
-    tin assert {[$dict1 get a] == 5}
-    tin assert {[$dict1 exists c]}
-    tin assert {![$dict1 exists d]}
-    tin assert {[$dict1 set d 7] eq $dict1}
+    assert {[$dict1 get a] == 5}
+    assert {[$dict1 exists c]}
+    assert {![$dict1 exists d]}
+    assert {[$dict1 set d 7] eq $dict1}
     $dict1 unset d
-    tin assert {[$dict1 size] == 3}
+    assert {[$dict1 size] == 3}
     $dict1 print
     $dict1 info
 } -result {exists 1 size 3 type dict value {a 5 b 3 c 5}}
@@ -315,11 +324,12 @@ test new_dict {
 test new_float {
     # Test all features of the "float" type
 } -body {
-    new float x {2 + 2}
-    tin assert {[$x] == 4}
-    [new float a] = {[$x] - 2}; # Assures that it is being evaluated at uplevel.
+    new float x
+    $x := {2 + 2}
+    assert {[$x] == 4}
+    [new float a] := {[$x] - 2}; # Assures that it is being evaluated at uplevel.
     [new float b] <- [$a *= 2]
-    tin assert {[$b] == 4}
+    assert {[$b] == 4}
     [$x *= {[$a] + 1}] --> c
     $c info
 } -result {exists 1 type float value 20.0}
@@ -331,8 +341,9 @@ test new_int {
     for {new int i 0} {[$i] < 10} {$i ++} {
         lappend values [$i]
     }
-    set values
-} -result {0 1 2 3 4 5 6 7 8 9}
+    lappend values [$i]
+    lappend values [[$i += {[$i] / 2}]]
+} -result {0 1 2 3 4 5 6 7 8 9 10 15}
 
 test var_ops {
     # Demonstrate features of object variable operators
@@ -349,7 +360,7 @@ test new_bool {
     # Test all features of the "bool" type
 } -body {
     [new bool flag] = true
-    $flag = ![$flag]
+    $flag := ![$flag]
     $flag ? {
         return hi
     } : {

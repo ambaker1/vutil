@@ -394,9 +394,11 @@ proc ::vutil::InitObj {objName arrayName args} {
 #
 # Object methods:
 # $varObj                   # Get object variable value
+# $varObj &                 # Echo object variable name
 # $varObj print <arg ...>   # Print object variable value
 # $varObj info <$field>     # Get object variable info array (or single value)
 # $varObj = $value          # Value assignment
+# $varObj := $expr          # Expression assignment
 # $varObj1 <- $varObj2      # Object assignment (must be same class)
 # $varObj --> $refName      # Copy object (and set up tie/link)
 
@@ -404,7 +406,7 @@ proc ::vutil::InitObj {objName arrayName args} {
     variable ""; # Array of object data
     constructor {refName args} {
         # Check arity
-        if {[llength $args] > 2} {
+        if {[llength $args] > 1} {
             return -code error "wrong # args: want \"var new refName ?value?\"\
                     or \"var create name refName ?value?\""
         }
@@ -416,14 +418,14 @@ proc ::vutil::InitObj {objName arrayName args} {
         # Initialize if value input is provided
         if {[llength $args] == 1} {
             # var new $refName $value
-            uplevel 1 [list [self] = [lindex $args 0]]; # Assign value
+            my = [lindex $args 0]; # Assign value
         }
         # Tie and link object
         upvar 1 $refName refVar
         ::vutil::link [::vutil::tie refVar [self]]
         return
     }
-    
+
     # Type --
     #
     # Hard-coded variable type. Overwritten by "type add"
@@ -453,7 +455,6 @@ proc ::vutil::InitObj {objName arrayName args} {
         }
     }
     
-    
     # GetValue (unknown) --
     #
     # Object value query (returns value).
@@ -471,6 +472,18 @@ proc ::vutil::InitObj {objName arrayName args} {
         next {*}$args
     }
     unexport unknown
+    
+    # & --
+    #
+    # Echos the object name (like a pointer reference)
+    #
+    # Syntax:
+    # $varObj &
+    
+    method & {} {
+        return [self]
+    }
+    export &
     
     # print --
     #
@@ -508,7 +521,10 @@ proc ::vutil::InitObj {objName arrayName args} {
     method = {args} {
         tailcall my SetValue {*}$args
     }
-    export =
+    method := {expr} {
+        my = [uplevel 1 [list expr $expr]]
+    }
+    export = :=
   
     # SetObject (<-) --
     # 
@@ -555,16 +571,21 @@ proc ::vutil::InitObj {objName arrayName args} {
     # refName       Reference variable to copy to
     
     method CopyObject {refName} {
-        set newObj [uplevel 1 [list [info object class [self]] new $refName]]
-        if {$(exists)} {
-            $newObj <- [self]
-        }
-        return $newObj
+        # Copy, tie, and link the object
+        upvar 1 $refName refVar
+        ::vutil::link [::vutil::tie refVar [::oo::copy [self]]]
+        return $refVar
     }
-    method --> {refName args} {
-        tailcall my CopyObject $refName {*}$args
+    method --> {refName} {
+        tailcall my CopyObject $refName
     }
     export -->
+    # <cloned> method for establishing initialization trace
+    # See documentation for oo::copy command
+    method <cloned> {srcObj} {
+        trace add variable (value) {read write} [list ::vutil::InitObj [self]]
+        next $srcObj
+    }
 }
 
 # type --
@@ -692,7 +713,7 @@ proc ::vutil::InitObj {objName arrayName args} {
 #
 # Create a new object variable (with type)
 #
-# new $type $varName <<"="> $value> <"<-" $object>
+# new $type $arg ...
 
 proc ::vutil::new {type args} {
     tailcall [type class $type] new {*}$args
@@ -709,14 +730,13 @@ proc ::vutil::new {type args} {
 
 # new bool --
 #
-# Passes input through expr and asserts boolean
+# Asserts boolean. Also has new if-statement control structure
 #
 # Additional methods:
 # ?         Shorthand if-statement (tailcalls "if")
 
 ::vutil::type new bool {
-    method SetValue {expr} {
-        set value [uplevel 1 [list expr $expr]]
+    method SetValue {value} {
         if {![string is boolean -strict $value]} {
             return -code error "expected boolean value but got \"$value\""
         }
@@ -737,17 +757,16 @@ proc ::vutil::new {type args} {
 
 # new int --
 #
-# Passes input through expr and asserts integer
+# Asserts integer. Also has increment/decrement operators
 #
 # Additional methods:
-# +=        Increment by value (pass through expr)
-# -=        Decrement by value (pass through expr)
+# +=        Increment by value
+# -=        Decrement by value
 # ++        Increment by 1
 # --        Decrement by 1
 
 ::vutil::type new int {
-    method SetValue {expr} {
-        set value [uplevel 1 [list expr $expr]]
+    method SetValue {value} {
         if {![string is integer -strict $value]} {
             return -code error "expected integer value but got \"$value\""
         }
@@ -775,7 +794,6 @@ proc ::vutil::new {type args} {
 # new float --
 #
 # Double-precision floating point value.
-# Passes input through expr and mathfunc::double. 
 #
 # Additional methods:
 # +=        Add value
@@ -784,25 +802,20 @@ proc ::vutil::new {type args} {
 # /=        Divide by value
 
 ::vutil::type new float {
-    method SetValue {expr} {
-        set value [::tcl::mathfunc::double [uplevel 1 [list expr $expr]]]
-        next $value
+    method SetValue {value} {
+        next [::tcl::mathfunc::double $value]
     }
     method += {expr} {
-        set (value) [expr {$(value) + [uplevel 1 [list expr $expr]]}]
-        return [self]
+        my := {$(value) + [uplevel 1 [list expr $expr]]}
     }
     method -= {expr} {
-        set (value) [expr {$(value) - [uplevel 1 [list expr $expr]]}]
-        return [self]
+        my := {$(value) - [uplevel 1 [list expr $expr]]}
     }
     method *= {expr} {
-        set (value) [expr {$(value) * [uplevel 1 [list expr $expr]]}]
-        return [self]
+        my := {$(value) * [uplevel 1 [list expr $expr]]}
     }
     method /= {expr} {
-        set (value) [expr {$(value) / [uplevel 1 [list expr $expr]]}]
-        return [self]
+        my := {$(value) / [uplevel 1 [list expr $expr]]}
     }
     export += -= *= /=
 }
@@ -859,17 +872,24 @@ proc ::vutil::new {type args} {
     #
     # Syntax:
     # $list @ $i ?$i ...? = $value
+    # $list @ $i ?$i ...? := $expr
     # $list @ ?$i ...?
     
     method @ {args} {
-        if {[llength $args] >= 3 && [lindex $args end-1] eq "="} {
-            # $list @ $i ?$i ...? = $value
-            lset (value) {*}[lrange $args 0 end-2] [lindex $args end]
-            return [self]
-        } else {
-            # $list @ ?$i ...?
-            return [lindex $(value) {*}$args]
+        switch [lindex $args end-1] {
+            = { # $list @ $i ?$i ...? = $value
+                set value [lindex $args end]
+            }
+            := { # $list @ $i ?$i ...? := $expr
+                set value [uplevel 1 [list expr [lindex $args end]]]
+            }
+            default { # $list @ ?$i ...?
+                return [lindex $(value) {*}$args]
+            }
         }
+        # Assign and return self
+        lset (value) {*}[lrange $args 0 end-2] $value
+        return [self]
     }
     export @
 }
@@ -921,4 +941,4 @@ proc ::vutil::new {type args} {
 }
 
 # Finally, provide the package
-package provide vutil 0.5.2
+package provide vutil 0.6

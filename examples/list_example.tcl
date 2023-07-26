@@ -7,5 +7,6 @@ $list1 @ 0 = "hey"
 $list1 @ 1 = "there"
 $list1 @ end+1 = "world"
 puts [$list1 @ end]; # world
-puts [$list1 info]; # exists 1 length 3 type list value {hey there world}
+$list1 @ end+1 := {1 + 1}
+puts [$list1 info]; # exists 1 length 3 type list value {hey there world 2}
 
