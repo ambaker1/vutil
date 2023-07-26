@@ -394,6 +394,7 @@ proc ::vutil::InitObj {objName arrayName args} {
 #
 # Object methods:
 # $varObj                   # Get object variable value
+# $varObj &                 # Echo object variable name
 # $varObj print <arg ...>   # Print object variable value
 # $varObj info <$field>     # Get object variable info array (or single value)
 # $varObj = $value          # Value assignment
@@ -454,7 +455,6 @@ proc ::vutil::InitObj {objName arrayName args} {
         }
     }
     
-    
     # GetValue (unknown) --
     #
     # Object value query (returns value).
@@ -472,6 +472,18 @@ proc ::vutil::InitObj {objName arrayName args} {
         next {*}$args
     }
     unexport unknown
+    
+    # & --
+    #
+    # Echos the object name (like a pointer reference)
+    #
+    # Syntax:
+    # $varObj &
+    
+    method & {} {
+        return [self]
+    }
+    export &
     
     # print --
     #
