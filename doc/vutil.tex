@@ -590,8 +590,8 @@ In addition to the standard assignment operator ``\texttt{=}'', the ``int'' type
 \end{syntax}
 \begin{args}
 \$op & Assignment operator: \\
- & ``\texttt{+=}'' Increments the variable by the value of \texttt{\$value}. \\
- & ``\texttt{-=}'' Decrements the variable by the value of \texttt{\$value}. \\
+ & ``\texttt{+=}'' Increments the variable by \texttt{\$value}. \\
+ & ``\texttt{-=}'' Decrements the variable by \texttt{\$value}. \\
 \$value & Integer value to increment or decrement by.
 \end{args}
 There are also two short-hand increment/decrement operators, ``\texttt{++}'' and ``\texttt{-{}-}'', which simply increment or decrement the integer object by 1.
@@ -694,14 +694,15 @@ $list1 @ 0 = "hey"
 $list1 @ 1 = "there"
 $list1 @ end+1 = "world"
 puts [$list1 @ end]; # world
-$list1 @ end+1 := {1 + 1}
-puts [$list1 info]; # exists 1 length 3 type list value {hey there world 2}
+set a 5
+$list1 @ end+1 := {$a + 1}
+puts [$list1 info]; # exists 1 length 4 type list value {hey there world 6}
 \end{lstlisting}
 \tcblower
 \begin{lstlisting}
 2
 world
-exists 1 length 3 type list value {hey there world 2}
+exists 1 length 4 type list value {hey there world 6}
 \end{lstlisting}
 \end{example}
 \clearpage
