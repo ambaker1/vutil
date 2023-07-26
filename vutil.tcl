@@ -772,12 +772,12 @@ proc ::vutil::new {type args} {
         }
         next $value
     }
-    method += {incr} {
-        incr (value) $incr
+    method += {expr} {
+        incr (value) [uplevel 1 [list expr $expr]]
         return [self]
     }
-    method -= {decr} {
-        incr (value) [::tcl::mathop - $decr]
+    method -= {expr} {
+        incr (value) [uplevel 1 [list expr -($expr)]]
         return [self]
     }
     method ++ {} {

@@ -316,7 +316,7 @@ The operator ``\texttt{\methodlink[0]{var}{-{}->}}'' copies the object to a new 
 \$refName & Name of reference variable to tie to object. 
 \end{args}
 
-The example below demonstrates how object variables can be manipulated:
+The example below demonstrates the myriad of ways object variables can be manipulated:
 
 \begin{example}{Object variable manipulation features}
 \begin{lstlisting}
@@ -537,7 +537,7 @@ The method ``\texttt{@}'' returns the character at the specified index.
 \end{args}
 \clearpage
 \subsection{Type ``bool'' (boolean)}
-The type ``\subcmdlink[0]{new}{bool}'' passes input through the Tcl \textit{expr} command and verifies that the result is indeed boolean. 
+The type ``\subcmdlink[0]{new}{bool}'' validates that the input is a valid boolean.
 \begin{syntax}
 \subcommand{new}{bool} \$refName <\$value>
 \end{syntax}
@@ -575,24 +575,24 @@ world
 \end{example}
 \clearpage
 \subsection{Type ``int'' (integer)}
-The type ``\subcmdlink[0]{new}{int}'' passes input through the Tcl \textit{expr} command and verifies that the result is indeed an integer. 
+The type ``\subcmdlink[0]{new}{int}'' validates that the input is a valid integer, and additionally has increment/decrement methods.
 \begin{syntax}
 \subcommand{new}{int} \$refName <\$value>
 \end{syntax}
 \begin{args}
 \$refName & Name of reference variable to tie to object. \\
-\$expr & Integer value.
+\$value & Integer value.
 \end{args}
 
-In addition to the standard assignment operator ``\texttt{=}'', the ``int'' type provides the increment/decrement assignment operators ``\texttt{+=}'' and ``\texttt{-=}''. 
+In addition to the standard assignment operators ``\texttt{=}'' and ``\texttt{:=}'', the ``int'' type provides the increment/decrement assignment operators ``\texttt{+=}'' and ``\texttt{-=}''. 
 \begin{syntax}
-\$intObj \$op \$value 
+\$intObj \$op \$expr 
 \end{syntax}
 \begin{args}
 \$op & Assignment operator: \\
- & ``\texttt{+=}'' Increments the variable by \texttt{\$value}. \\
- & ``\texttt{-=}'' Decrements the variable by \texttt{\$value}. \\
-\$value & Integer value to increment or decrement by.
+ & ``\texttt{+=}'' Increments the variable by the value of \texttt{\$expr}. \\
+ & ``\texttt{-=}'' Decrements the variable by the value of \texttt{\$expr}. \\
+\$expr & Tcl math expression to evaluate.
 \end{args}
 There are also two short-hand increment/decrement operators, ``\texttt{++}'' and ``\texttt{-{}-}'', which simply increment or decrement the integer object by 1.
 \begin{syntax}
@@ -618,7 +618,7 @@ for {new int i 0} {[$i] < 3} {$i ++} {
 \clearpage
 
 \subsection{Type ``float'' (double-precision floating-point decimal)}
-The type ``\subcmdlink[0]{new}{float}'' passes input through the Tcl \textit{expr} command and the \textit{::tcl::mathfunc::double} command, ensuring that the value is a double-precision floating-point number.
+The type ``\subcmdlink[0]{new}{float}'' validates that input is a double-precision floating-point number, passing input through the Tcl \textit{::tcl::mathfunc::double} command.
 \begin{syntax}
 \subcommand{new}{float} \$refName <\$value>
 \end{syntax}
@@ -627,7 +627,7 @@ The type ``\subcmdlink[0]{new}{float}'' passes input through the Tcl \textit{exp
 \$value & Float value.
 \end{args}
 
-In addition to the standard assignment operator ``\texttt{=}'', the ``float'' type provides the following: 
+In addition to the standard assignment operators ``\texttt{=}'' and ``\texttt{:=}'', the ``float'' type provides the following: 
 \begin{syntax}
 \$floatObj \$op \$expr
 \end{syntax}
