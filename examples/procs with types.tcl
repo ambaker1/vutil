@@ -23,7 +23,7 @@ puts [rem 10 4]; # 2
 proc hmean {x y} {
     new float x $x
     new float y $y
-    [new float z] = {2*[$x]*[$y]}
+    [new float z] := {2*[$x]*[$y]}
     if {[$z] != 0} {
         $z /= {[$x] + [$y]}
     }

@@ -287,15 +287,20 @@ hello world
 
 \clearpage
 \subsection{Object Variable Operators}
-In addition to being able to manipulate object variables directly with Tcl commands, variables can also be manipulated with object variable operators. 
+In addition to being able to manipulate object variables directly with Tcl commands, variables can also be manipulated with object variable operators.
 
-The operator ``\texttt{\methodlink[0]{var}{=}}'' assigns the value of the object variable, and returns the name of the object.
+The operators ``\texttt{\methodlink[0]{var}{=}}'' and ``\texttt{\methodlink[0]{var}{:=}}'' assign the value of the object variable, and return the name of the object.
 \begin{syntax}
 \method{var}{=} \$value
 \end{syntax}
+\begin{syntax}
+\method{var}{:=} \$expr
+\end{syntax}
 \begin{args}
-\$value & Value to set object variable to.
+\$value & Value to set object variable to. \\
+\$expr & Math expression to evaluate and set as object value.
 \end{args}
+
 The operator ``\texttt{\methodlink[0]{var}{<-}}'' assigns the value of the object directly from another object variable of the same class, and, like the operator  ``\texttt{\methodlink[0]{var}{=}}'', returns the name of the object.
 \begin{syntax}
 \method{var}{<-} \$otherVarObj 
@@ -318,7 +323,7 @@ The example below demonstrates how object variables can be manipulated:
 var new x; # Create blank variable $x
 [$x --> y] = 5; # Copy $x to $y, and set to 5
 [var new z] <- [$x <- $y]; # Create $z and set to x after setting $x to $y.
-incr $z [$x]; # Increment $z by value of $x (5) 
+$z := {[$z] + [$x]}; # Add $x to $z
 append $y [set $x 0]; # Append $y the value of $x after setting $x to 0
 puts [list [$x] [$y] [$z]]
 \end{lstlisting}
@@ -331,6 +336,11 @@ puts [list [$x] [$y] [$z]]
 \clearpage
 \subsection{Object Variable Methods}
 Additional information about the object variable can be accessed with object variable methods:
+
+The operator ``\textbf{\texttt{\methodlink[0]{var}{\&}}}'' simply returns the name of the object.
+\begin{syntax}
+\method{var}{\&}
+\end{syntax}
 
 The method \methodlink[0]{var}{info} accesses all object variable metadata. 
 Fields ``exists'' and ``type'' always exist, and ``value'' is populated when the variable is initialized.
@@ -529,11 +539,11 @@ The method ``\texttt{@}'' returns the character at the specified index.
 \subsection{Type ``bool'' (boolean)}
 The type ``\subcmdlink[0]{new}{bool}'' passes input through the Tcl \textit{expr} command and verifies that the result is indeed boolean. 
 \begin{syntax}
-\subcommand{new}{bool} \$refName <\$expr>
+\subcommand{new}{bool} \$refName <\$value>
 \end{syntax}
 \begin{args}
 \$refName & Name of reference variable to tie to object. \\
-\$expr & Tcl math expression.
+\$value & Boolean value.
 \end{args}
 
 In addition to the standard object variable methods, the ``bool'' type provides a shorthand if-statement control flow method:
@@ -567,22 +577,22 @@ world
 \subsection{Type ``int'' (integer)}
 The type ``\subcmdlink[0]{new}{int}'' passes input through the Tcl \textit{expr} command and verifies that the result is indeed an integer. 
 \begin{syntax}
-\subcommand{new}{int} \$refName <\$expr>
+\subcommand{new}{int} \$refName <\$value>
 \end{syntax}
 \begin{args}
 \$refName & Name of reference variable to tie to object. \\
-\$expr & Tcl math expression.
+\$expr & Integer value.
 \end{args}
 
 In addition to the standard assignment operator ``\texttt{=}'', the ``int'' type provides the increment/decrement assignment operators ``\texttt{+=}'' and ``\texttt{-=}''. 
 \begin{syntax}
-\$intObj \$op \$expr 
+\$intObj \$op \$value 
 \end{syntax}
 \begin{args}
 \$op & Assignment operator: \\
- & ``\texttt{+=}'' Increments the variable by the value of \texttt{\$expr}. \\
- & ``\texttt{-=}'' Decrements the variable by the value of \texttt{\$expr}. \\
-\$expr & Tcl math expression to evaluate.
+ & ``\texttt{+=}'' Increments the variable by the value of \texttt{\$value}. \\
+ & ``\texttt{-=}'' Decrements the variable by the value of \texttt{\$value}. \\
+\$value & Integer value to increment or decrement by.
 \end{args}
 There are also two short-hand increment/decrement operators, ``\texttt{++}'' and ``\texttt{-{}-}'', which simply increment or decrement the integer object by 1.
 \begin{syntax}
@@ -610,11 +620,11 @@ for {new int i 0} {[$i] < 3} {$i ++} {
 \subsection{Type ``float'' (double-precision floating-point decimal)}
 The type ``\subcmdlink[0]{new}{float}'' passes input through the Tcl \textit{expr} command and the \textit{::tcl::mathfunc::double} command, ensuring that the value is a double-precision floating-point number.
 \begin{syntax}
-\subcommand{new}{float} \$refName <\$expr>
+\subcommand{new}{float} \$refName <\$value>
 \end{syntax}
 \begin{args}
 \$refName & Name of reference variable to tie to object. \\
-\$expr & Tcl math expression.
+\$value & Float value.
 \end{args}
 
 In addition to the standard assignment operator ``\texttt{=}'', the ``float'' type provides the following: 
@@ -636,7 +646,7 @@ In addition to the standard assignment operator ``\texttt{=}'', the ``float'' ty
 proc hmean {x y} {
     new float x $x
     new float y $y
-    [new float z] = {2*[$x]*[$y]}
+    [new float z] := {2*[$x]*[$y]}
     if {[$z] != 0} {
         $z /= {[$x] + [$y]}
     }
@@ -664,15 +674,16 @@ The method \textit{length} returns the list length. This is the same as ``\textt
 \begin{syntax}
 \$listObj length
 \end{syntax}
-The method ``\texttt{@}'' acts as either list indexing or list setting, depending on whether the ``\texttt{=}'' keyword is used.
+The method ``\texttt{@}'' acts as either list indexing or list setting, depending on whether the ``\texttt{=}'' or ``\texttt{:=}'' keywords are used.
 If indexing, it returns the value at the specified index. 
 If setting, it sets the value and returns the object name.
 \begin{syntax}
-\$listObj @ \$i ... <''='' \$value>
+\$listObj @ \$i ... <''='' \$value | '':='' \$expr>
 \end{syntax}
 \begin{args}
 \$i ... & List indices. \\
-\$value & Value to set. 
+\$value & Value to set. \\
+\$expr & Math expression to set.
 \end{args}
 
 \begin{example}{List example}
@@ -683,13 +694,14 @@ $list1 @ 0 = "hey"
 $list1 @ 1 = "there"
 $list1 @ end+1 = "world"
 puts [$list1 @ end]; # world
-puts [$list1 info]; # exists 1 length 3 type list value {hey there world}
+$list1 @ end+1 := {1 + 1}
+puts [$list1 info]; # exists 1 length 3 type list value {hey there world 2}
 \end{lstlisting}
 \tcblower
 \begin{lstlisting}
 2
 world
-exists 1 length 3 type list value {hey there world}
+exists 1 length 3 type list value {hey there world 2}
 \end{lstlisting}
 \end{example}
 \clearpage
