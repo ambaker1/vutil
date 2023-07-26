@@ -713,7 +713,7 @@ proc ::vutil::InitObj {objName arrayName args} {
 #
 # Create a new object variable (with type)
 #
-# new $type $varName <<"="> $value> <"<-" $object>
+# new $type $arg ...
 
 proc ::vutil::new {type args} {
     tailcall [type class $type] new {*}$args
@@ -730,7 +730,7 @@ proc ::vutil::new {type args} {
 
 # new bool --
 #
-# Passes input through expr and asserts boolean
+# Asserts boolean. Also has new if-statement control structure
 #
 # Additional methods:
 # ?         Shorthand if-statement (tailcalls "if")
@@ -757,7 +757,7 @@ proc ::vutil::new {type args} {
 
 # new int --
 #
-# Passes input through expr and asserts integer
+# Asserts integer. Also has increment/decrement operators
 #
 # Additional methods:
 # +=        Increment by value
@@ -794,7 +794,6 @@ proc ::vutil::new {type args} {
 # new float --
 #
 # Double-precision floating point value.
-# Passes input through expr and mathfunc::double. 
 #
 # Additional methods:
 # +=        Add value
@@ -806,21 +805,17 @@ proc ::vutil::new {type args} {
     method SetValue {value} {
         next [::tcl::mathfunc::double $value]
     }
-    method += {value} {
-        set (value) [expr {$(value) + $value}]
-        return [self]
+    method += {expr} {
+        my := {$(value) + [uplevel 1 [list expr $expr]]}
     }
-    method -= {value} {
-        set (value) [expr {$(value) - $value]}]
-        return [self]
+    method -= {expr} {
+        my := {$(value) - [uplevel 1 [list expr $expr]]}
     }
-    method *= {value} {
-        set (value) [expr {$(value) * $value]}]
-        return [self]
+    method *= {expr} {
+        my := {$(value) * [uplevel 1 [list expr $expr]]}
     }
-    method /= {value} {
-        set (value) [expr {$(value) / $value]}]
-        return [self]
+    method /= {expr} {
+        my := {$(value) / [uplevel 1 [list expr $expr]]}
     }
     export += -= *= /=
 }
