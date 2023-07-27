@@ -1,7 +1,7 @@
 package require tin 0.7.2
 tin import tcltest
 tin import assert from tin
-set version 0.6
+set version 0.6.1
 set config [dict create VERSION $version]
 tin bake src build $config
 tin bake doc/template/version.tin doc/template/version.tex $config
@@ -171,6 +171,7 @@ test self-tie {
 test tie-trace-count {
     # Ensure that the number of traces is 1
 } -body {
+    tie a [fruit new]
     tie a [fruit new]
     llength [trace info variable a]
 } -result {1}

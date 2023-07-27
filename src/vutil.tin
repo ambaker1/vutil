@@ -207,7 +207,7 @@ proc ::vutil::tie {varName args} {
     if {![info object isa object $objName]} {
         return -code error "\"$objName\" is not an object"
     }
-    # Remove any existing lock trace and remove tie traces if self-tying
+    # Remove any existing lock trace and remove tie traces if not self-tying
     if {[info exists refVar]} {
         unlock refVar
         if {$objName eq $refVar} {
@@ -246,7 +246,7 @@ proc ::vutil::untie {args} {
 
 # TieTrace --
 #
-# Destroys associated Tcl object and removes ties
+# Destroys associated Tcl object and removes traces
 #
 # Syntax:
 # TieTrace $objName $varName $index $op
@@ -261,9 +261,11 @@ proc ::vutil::TieTrace {objName varName index op} {
     upvar 1 $varName refVar
     if {[info exists refVar]} {
         if {[array exists refVar]} {
-            untie refVar($index)
+            trace remove variable refVar($index) {write unset} \
+                    [list ::vutil::TieTrace $objName]
         } else {
-            untie refVar
+            trace remove variable refVar {write unset} \
+                    [list ::vutil::TieTrace $objName]
         }
     }
 }
