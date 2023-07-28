@@ -1,7 +1,7 @@
 package require tin 0.7.2
 tin import tcltest
 tin import assert from tin
-set version 0.6.1
+set version 0.7
 set config [dict create VERSION $version]
 tin bake src build $config
 tin bake doc/template/version.tin doc/template/version.tex $config
@@ -395,6 +395,44 @@ puts [$x info]
 $x print -nonewline
 } -output {exists 1 type var value {Hello World}
 Hello World}
+
+test type_names {
+    # Verify the names of the types
+} -body {
+    lsort [type names]
+} -result {bool dict float int list string var}
+
+test type_exists {
+    # Verify that "exists" works
+} -body {
+    list [type exists dict] [type exists foo]
+} -result {1 0}
+
+test type_class_var {
+    # Check the class for "var"
+} -body {
+    type class var
+} -result {::vutil::var}
+
+test type_class_new {
+    # Check the class for types created with "type new"
+} -body {
+    type class dict
+} -result {::vutil::type.dict}
+
+test type_create_traces {
+    # Ensure that you can create a type in a specific namespace and have 
+    # it unregister from the type library when deleted.
+} -body {
+    type create foo bar {}
+    assert {[type class foo] eq "::bar"}
+    assert [type exists foo]
+    rename bar boo 
+    assert {[type class foo] eq "::boo"}
+    assert [type exists foo]
+    boo destroy
+    type exists foo
+} -result {0}
 
 # Check number of failed tests
 set nFailed $::tcltest::numTests(Failed)
