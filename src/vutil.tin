@@ -154,6 +154,7 @@ proc ::vutil::unlock {args} {
 # LockTrace --
 #
 # Private procedure, used for enforcing locked value
+# Prints warning to notify user that variable is locked
 #
 # Syntax:
 # LockTrace $value $varName $index $op
@@ -168,8 +169,10 @@ proc ::vutil::LockTrace {value varName index op} {
     upvar 1 $varName var
     if {[array exists var]} {
         set var($index) $value
+        puts stderr "failed to modify \"${varName}($index)\": read-only"
     } else {
         set var $value
+        puts stderr "failed to modify \"$varName\": read-only"
     }
 }
 
