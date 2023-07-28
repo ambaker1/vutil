@@ -595,124 +595,160 @@ proc ::vutil::InitObj {objName arrayName args} {
 
 # type --
 #
-# Metaclass that creates var types
+# Namespace ensemble for manipulating types.
 # 
 # Object creation:
 # type new $type $arg ...
 #
 # Arguments:
 # type          Name of type
-# arg ...       Class definition arguments
 
-::oo::class create ::vutil::type {
-    superclass ::oo::class
-    constructor {type args} {
-        if {[[self class] exists $type]} {
-            return -code error "type \"$type\" already exists"
-        }
-        rename [self] ::vutil::type.$type; # Rename class
-        oo::define [self] superclass ::vutil::var
-        next {*}$args
-        [self class] add $type [self]
-    }
-}
-::oo::objdefine ::vutil::type unexport create; # Only allow "new"
-
-# Define "type" metaclass object methods
-::oo::objdefine ::vutil::type {
-    # Set up variable to store types and classes
+namespace eval ::vutil::type {
+    # Define variables
     variable typeClass
-    
-    # type add --
-    # 
-    # Add a type directly
-    #
-    # Syntax:
-    # type add $type $class
-    #
-    # Arguments:
-    # type          Name of type
-    # class         TclOO class name
-    
-    method add {type class} {
-        set typeClass($type) $class
-        ::oo::define $class method Type {} [list return $type]
-        ::oo::define $class variable ""
+    set typeClass(var) ::vutil::var; # Initialize with basic "var" type
+    # Define "type" ensemble
+    namespace export new create; # Create a type class
+    namespace export names exists; # Query type names
+    namespace export class isa; # Query type classes
+    namespace ensemble create
+    # Make "type" available in this namespace
+    namespace import ::vutil::type
+}
+
+# type new --
+#
+# Create a type class with an automatic name
+#
+# Syntax:
+# type new $type $defScript
+#
+# Arguments:
+# type          Name of type
+# defScript     Class definition script  
+
+proc ::vutil::type::new {type defScript} {
+    tailcall type create $type ::vutil::type.$type $defScript
+}
+
+# type create --
+#
+# Create a type class with a specific name
+#
+# Syntax:
+# type create $type $name $defScript
+#
+# Arguments:
+# type          Name of type
+# name          Name of class
+# defScript     Class definition script  
+
+proc ::vutil::type::create {type name defScript} {
+    variable typeClass
+    # Create class
+    if {[type exists $type]} {
+        return -code error "type \"$type\" already exists"
     }
-    
-    # type remove --
-    # 
-    # Remove a type
-    #
-    # Syntax:
-    # type remove $type
-    #
-    # Arguments:
-    # type          Name of type
-    
-    method remove {type} {
-        if {[my exists $type]} {
+    # Create the class (and get fully qualified name)
+    set class [uplevel 1 [list ::oo::class create $name]]
+    # Define the basics
+    ::oo::define $class superclass [type class var]
+    ::oo::define $class method Type {} [list return $type]
+    ::oo::define $class variable ""
+    # Call user-defined defScript.
+    uplevel 1 [list ::oo::define $class $defScript]
+    # Set up traces to remove the type if the class is destroyed.
+    trace add command $class {rename delete} [list ::vutil::type::Tracer $type]
+    # Register the type class now that the setup was successful
+    set typeClass($type) $class
+    # Return the class name, just like with oo::class create
+    return $class
+}
+
+# Tracer --
+#
+# Command trace to re-register the type class if renamed, or to remove it if 
+# the class is deleted.
+#
+# Syntax:
+# Tracer $type $oldName $newName $op
+# 
+# Arguments:
+# type          Name of type
+# oldName       Fully qualified name of class before op
+# newName       Fully qualified name of class after op
+# op            "rename" or "delete". See Tcl documentation for "trace"
+
+proc ::vutil::type::Tracer {type oldName newName op} {
+    variable typeClass
+    switch $op {
+        rename {
+            set typeClass($type) $newName
+        }
+        delete {
             unset typeClass($type)
         }
     }
-        
-    # type names --
-    # 
-    # Get list of all defined types
-    #
-    # Syntax:
-    # type names
+}
 
-    method names {} {
-        array names typeClass
+# type names --
+# 
+# Get list of all defined types (unordered)
+#
+# Syntax:
+# type names
+
+proc ::vutil::type::names {} {
+    variable typeClass
+    array names typeClass
+}
+
+# type exists --
+# 
+# Check whether a type exists or not
+#
+# Syntax:
+# type exists $type
+#
+# Arguments:
+# type          Name of type
+    
+proc ::vutil::type::exists {type} {
+    variable typeClass
+    info exists typeClass($type)
+}
+
+# type class --
+# 
+# Get class associated with type
+#
+# Syntax:
+# type class $type
+#
+# Arguments:
+# type          Name of type
+
+proc ::vutil::type::class {type} {
+    variable typeClass
+    if {![type exists $type]} {
+        return -code error "type \"$type\" does not exist"
     }
-            
-    # type exists --
-    # 
-    # Check whether a type exists or not
-    #
-    # Syntax:
-    # type exists $type
-    #
-    # Arguments:
-    # type          Name of type
-    
-    method exists {type} {
-        info exists typeClass($type)
+    return $typeClass($type)
+}
+
+# type isa --
+#
+# Check if an object is of a specific type (or a subtype)
+#
+# Syntax:
+# type isa $type $objName
+
+proc ::vutil::type::isa {type objName} {
+    if {![info object isa object $objName]} {
+        return -code error "\"$objName\" is not an object"
     }
-    
-    # type class --
-    # 
-    # Get class associated with type
-    #
-    # Syntax:
-    # type class $type
-    #
-    # Arguments:
-    # type          Name of type
-    
-    method class {type} {
-        if {![my exists $type]} {
-            return -code error "type \"$type\" does not exist"
-        }
-        return $typeClass($type)
-    }
-    
-    # type isa --
-    #
-    # Check if an object is of a specific type (or a subtype)
-    #
-    # Syntax:
-    # type isa $type $objName
-    
-    method isa {type objName} {
-        if {![info object isa object $objName]} {
-            return -code error "\"$objName\" is not an object"
-        }
-        info object isa typeof $objName [my class $type]
-    }
-    
-}; # end object definition
+    info object isa typeof $objName [type class $type]
+}
 
 # new --    
 #
@@ -726,12 +762,6 @@ proc ::vutil::new {type args} {
 
 # BASIC DATA TYPES
 ################################################################################
-
-# new var --
-#
-# Basic variable type (no meta data)
-
-::vutil::type add var ::vutil::var
 
 # new bool --
 #
