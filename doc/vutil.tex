@@ -122,6 +122,7 @@ puts $a
 \section{Variable Locks}
 The command \cmdlink{lock} uses Tcl variable traces to make a read-only variable. 
 This is especially useful for controlling a parameter study of an analysis from a top-level.
+If attempting to modify a locked variable, it will throw a warning, but not an error.
 
 \begin{syntax}
 \command{lock} \$varName <\$value>
@@ -143,7 +144,7 @@ The command \cmdlink{unlock} unlocks previously locked variables so that they ca
 \begin{example}{Variable locks}
 \begin{lstlisting}
 lock a 5
-set a 7
+set a 7; # throws warning to stderr channel
 puts $a
 unlock a
 set a 7
@@ -151,6 +152,7 @@ puts $a
 \end{lstlisting}
 \tcblower
 \begin{lstlisting}
+failed to modify "a": read-only
 5
 7
 \end{lstlisting}
@@ -375,44 +377,50 @@ Hello World
 
 \clearpage
 \section{Object Variable Types}
-The TclOO class \cmdlink{var} acts as a superclass for a pure-Tcl type system, managed through the metaclass \cmdlink{type}.
+The TclOO class \cmdlink{var} acts as a superclass for a pure-Tcl type system. Type classes are created and managed through the command ensemble \cmdlink{type}.
 \begin{syntax}
-\command{type} \$method \$arg ...
+\command{type} \$subcommand \$arg ...
 \end{syntax}
 \begin{args}
-\$method & Method name. \\
-\$arg ... & Arguments for method.
+\$subcommand & Subcommand name. \\
+\$arg ... & Arguments for subcommand.
 \end{args}
 
-New type classes can be created using the method \subcmdlink[0]{type}{new}.
-The resulting class, named ``\texttt{::vutil::type.\$type}'', uses ``\texttt{::vutil::var}'' as a superclass. 
+New type classes can be created using the subcommands \subcmdlink[0]{type}{new} or \subcmdlink[0]{type}{create}.
+Both subcommands create a class that is a subclass of ``\texttt{::vutil::var}'', with a private method \textit{Type} that returns the corresponding type.
+If creating a type class with the subcommand \subcmdlink[0]{type}{new}, the resulting class will be named ``\texttt{::vutil::type.\$type}''.
 \begin{syntax}
-\subcommand{type}{new} \$type \$arg ...
-\end{syntax}
-\begin{args}
-\$type & Name of type. \\
-\$arg ... & Class definition arguments. 
-\end{args}
-
-Existing classes can be added to the type library directly with the method \subcmdlink[0]{type}{add}. 
-These classes do not need to be subclasses of ``\texttt{::vutil::var}'', but it is recommended to utilize ``\texttt{::vutil::var}'' as a superclass.
-
-\begin{syntax}
-\subcommand{type}{add} \$type \$class
+\subcommand{type}{new} \$type \$defScript \\
+\subcommand{type}{create} \$type \$name \$defScript
 \end{syntax}
 \begin{args}
 \$type & Name of type. \\
-\$class & Type class.
+\$name & Name of class. \\
+\$defScript & Class definition script. 
 \end{args}
 
-To remove a type, use the method \subcmdlink[0]{type}{remove}. 
-This does not destroy the associated class, but simply removes the class from the type list. 
-\begin{syntax}
-\subcommand{type}{remove} \$type
-\end{syntax}
-\begin{args}
-\$type & Name of type. 
-\end{args}
+To demonstrate how easy it is to create a type class, below is the code used to create the \subcmdlink[0]{new}{string} type.
+\begin{example}{Creating a simple type}
+\begin{lstlisting}
+type new string {
+    method info {args} {
+        set (length) [my length]
+        next {*}$args
+    }
+    method length {} {
+        string length $(value)
+    }
+    method @ {i} {
+        string index $(value) $i
+    }
+    export @
+}
+\end{lstlisting}
+\end{example}
+
+Note that the value is stored in the blank array name ``value''. 
+The blank array is used to store all the object variable properties, and is what is returned with the method ``info''.
+By default, from the superclass ``\texttt{::vutil::var}'', there are three properties: (value), (exists), and (type)
 
 \clearpage
 \subsection{Type Queries}
@@ -455,7 +463,6 @@ proc foo {bar} {
 \end{lstlisting}
 \end{example}
 
-
 \clearpage
 \subsection{Creating Type Variables}
 Then, using the types defined by \cmdlink{type}, the command \cmdlink{new} creates a new variable object of a specified type.
@@ -469,22 +476,10 @@ Then, using the types defined by \cmdlink{type}, the command \cmdlink{new} creat
 \$value & Value to set object variable to.
 \end{args}
 
-\begin{example}{New type and object variables}
+Now you can easily create variables in Tcl with a specified type!
+\begin{example}{Creating a new \subcmdlink[0]{new}{string} object variable}
 \begin{lstlisting}
-type new str {
-    method info {args} {
-        set (length) [my length]
-        next {*}$args
-    }
-    method length {} {
-        string length $(value)
-    }
-    method @ {i} {
-        string index $(value) $i
-    }
-    export @
-}
-new str x
+new string x
 set $x {hello world}
 puts [$x length]
 puts [$x info]
@@ -494,7 +489,7 @@ $x print
 \tcblower
 \begin{lstlisting}
 11
-exists 1 length 11 type str value {hello world}
+exists 1 length 11 type string value {hello world}
 d
 hello world
 \end{lstlisting}
