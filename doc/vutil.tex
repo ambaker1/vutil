@@ -285,7 +285,39 @@ hello world
 0
 \end{lstlisting}
 \end{example}
+\clearpage
+\subsection{Object Variable Methods}
+Additional information about the object variable can be accessed with object variable methods:
 
+The method \methodlink[0]{var}{info} accesses all object variable metadata. 
+Fields ``exists'' and ``type'' always exist, and ``value'' is populated when the variable is initialized.
+\begin{syntax}
+\method{var}{info} <\$field>
+\end{syntax}
+\begin{args}
+\$field & Info field to get. Default returns dictionary of all info. \\
+\end{args}
+
+The method \methodlink[0]{var}{print} is a short-hand way to print the value of the variable to screen.
+\begin{syntax}
+\method{var}{print} <-nonewline> <\$channelID>
+\end{syntax}
+\begin{args}
+-nonewline & Option to print without newline. \\
+\$channelID & Channel ID open for writing. Default stdout.
+\end{args}
+\begin{example}{Printing the value of a variable}
+\begin{lstlisting}
+var new x {Hello World}
+puts [$x info]
+$x print
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+exists 1 type var value {Hello World}
+Hello World
+\end{lstlisting}
+\end{example}
 
 \clearpage
 \subsection{Object Variable Operators}
@@ -361,41 +393,6 @@ Note: The ``\textbf{\texttt{\methodlink[0]{var}{\&}}}'' operator always copies t
 To return multiple objects, either use the Tcl \textit{upvar} command, or use \cmdlink{untie} to remove garbage collection and then retie them in the calling scope.
     
 \clearpage
-\subsection{Object Variable Methods}
-Additional information about the object variable can be accessed with object variable methods:
-
-The method \methodlink[0]{var}{info} accesses all object variable metadata. 
-Fields ``exists'' and ``type'' always exist, and ``value'' is populated when the variable is initialized.
-\begin{syntax}
-\method{var}{info} <\$field>
-\end{syntax}
-\begin{args}
-\$field & Info field to get. Default returns dictionary of all info. \\
-\end{args}
-
-The method \methodlink[0]{var}{print} is a short-hand way to print the value of the variable to screen.
-\begin{syntax}
-\method{var}{print} <-nonewline> <\$channelID>
-\end{syntax}
-\begin{args}
--nonewline & Option to print without newline. \\
-\$channelID & Channel ID open for writing. Default stdout.
-\end{args}
-\begin{example}{Printing the value of a variable}
-\begin{lstlisting}
-var new x {Hello World}
-puts [$x info]
-$x print
-\end{lstlisting}
-\tcblower
-\begin{lstlisting}
-exists 1 type var value {Hello World}
-Hello World
-\end{lstlisting}
-\end{example}
-
-\clearpage
-
 \section{Object Variable Types}
 The TclOO class \cmdlink{var} acts as a superclass for a pure-Tcl type system. Type classes are created and managed through the command ensemble \cmdlink{type}.
 \begin{syntax}
