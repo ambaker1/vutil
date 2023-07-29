@@ -517,7 +517,6 @@ hello world
 \clearpage
 \section{Type Library}
 This package provides a few basic object variable types: \subcmdlink[0]{new}{var}, \subcmdlink[0]{new}{string}, \subcmdlink[0]{new}{bool}, \subcmdlink[0]{new}{int}, \subcmdlink[0]{new}{float}, \subcmdlink[0]{new}{list}, and \subcmdlink[0]{new}{dict}.
-If you want to create your own datatype, check out the source code implementation for API documentation.
 
 \subsection{Type ``var''}
 The type ``\subcmdlink[0]{new}{var}'' is just an alternative way to create an object variable (same syntax as ``new'' method for \cmdlink{var} class).
@@ -604,8 +603,8 @@ In addition to the standard assignment operators ``\texttt{=}'' and ``\texttt{:=
 \end{syntax}
 \begin{args}
 \$op & Assignment operator: \\
- & ``\texttt{+=}'' Increments the variable by the value of \texttt{\$expr}. \\
- & ``\texttt{-=}'' Decrements the variable by the value of \texttt{\$expr}. \\
+\quad += & \quad Increments the variable by the value of \texttt{\$expr}. \\
+\quad -= & \quad Decrements the variable by the value of \texttt{\$expr}. \\
 \$expr & Tcl math expression to evaluate.
 \end{args}
 There are also two short-hand increment/decrement operators, ``\texttt{++}'' and ``\texttt{-{}-}'', which simply increment or decrement the integer object by 1.
@@ -647,10 +646,10 @@ In addition to the standard assignment operators ``\texttt{=}'' and ``\texttt{:=
 \end{syntax}
 \begin{args}
 \$op & Assignment operator: \\
-& ``\texttt{+=}'' Adds the value of \texttt{\$expr} to the variable. \\
-& ``\texttt{-=}'' Subtracts the value of \texttt{\$expr} from the variable. \\
-& ``\texttt{*=}'' Multiplies the variable by the value of \texttt{\$expr}. \\
-& ``\texttt{/=}'' Divides  the variable by the value of \texttt{\$expr}. \\
+\quad += & \quad Adds the value of \texttt{\$expr} to the variable. \\
+\quad -= & \quad Subtracts the value of \texttt{\$expr} from the variable. \\
+\quad *= & \quad Multiplies the variable by the value of \texttt{\$expr}. \\
+\quad /= & \quad Divides  the variable by the value of \texttt{\$expr}. \\
 \$expr & Tcl math expression to evaluate.
 \end{args}
 
