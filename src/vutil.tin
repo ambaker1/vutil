@@ -11,6 +11,8 @@
 
 # Define namespace
 namespace eval ::vutil {
+    # Internal variables
+    variable temp; # Temporary object for returning from procedures
     # Exported Commands
     namespace export pvar; # Print variables and their values
     namespace export local; # Access local namespace variables (like global)
@@ -399,7 +401,7 @@ proc ::vutil::InitObj {objName arrayName args} {
 #
 # Object methods:
 # $varObj                   # Get object variable value
-# $varObj &                 # Echo object variable name
+# $varObj &                 # Copy to shared object, and return shared object.
 # $varObj print <arg ...>   # Print object variable value
 # $varObj info <$field>     # Get object variable info array (or single value)
 # $varObj = $value          # Value assignment
@@ -480,13 +482,13 @@ proc ::vutil::InitObj {objName arrayName args} {
     
     # & --
     #
-    # Echos the object name (like a pointer reference)
+    # Copy to the shared temporary object variable.
     #
     # Syntax:
     # $varObj &
     
     method & {} {
-        return [self]
+        my --> ::vutil::temp
     }
     export &
     
@@ -610,7 +612,7 @@ namespace eval ::vutil::type {
     # Define "type" ensemble
     namespace export new create; # Create a type class
     namespace export names exists; # Query type names
-    namespace export class isa; # Query type classes
+    namespace export class isa assert; # Query type classes
     namespace ensemble create
     # Make "type" available in this namespace
     namespace import ::vutil::type
@@ -741,13 +743,26 @@ proc ::vutil::type::class {type} {
 # Check if an object is of a specific type (or a subtype)
 #
 # Syntax:
-# type isa $type $objName
+# type isa $type $object
 
-proc ::vutil::type::isa {type objName} {
-    if {![info object isa object $objName]} {
-        return -code error "\"$objName\" is not an object"
+proc ::vutil::type::isa {type object} {
+    if {![info object isa object $object]} {
+        return -code error "\"$object\" is not an object"
     }
-    info object isa typeof $objName [type class $type]
+    info object isa typeof $object [type class $type]
+}
+
+# type assert --
+#
+# Assert a type of an object variable
+#
+# Syntax:
+# type assert $type $object
+
+proc ::vutil::type::assert {type object} {
+    if {![type isa $type $object]} {
+        return -code error "assert type $type failed"
+    }
 }
 
 # new --    

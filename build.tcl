@@ -1,7 +1,7 @@
 package require tin 0.7.2
 tin import tcltest
 tin import assert from tin
-set version 0.7
+set version 0.8
 set config [dict create VERSION $version]
 tin bake src build $config
 tin bake doc/template/version.tin doc/template/version.tex $config
@@ -196,10 +196,11 @@ test obj_new {
 } -result {foo}
 
 test obj_ref {
-    # Verify that the "&" method returns "self"
+    # Verify that the "&" method returns "::vutil::temp"
 } -body {
-    $a &
-} -result $a
+    set temp [$a &]
+    assert {$temp eq $::vutil::temp}
+} -result {}
 
 test obj_create {
     # Create an object with name
@@ -433,6 +434,34 @@ test type_create_traces {
     boo destroy
     type exists foo
 } -result {0}
+
+test assert&return {
+    # Test out returning an object variable from a procedure.
+} -body {
+    # Procedures can take as input object variables, create objects that are 
+    # cleaned up by garbage collection, yet still pass a copy of the object.
+    proc combineLists {x y} {
+        type assert list $x
+        type assert list $y
+        new list z [concat [$x] [$y]]
+        return [$z &]
+    }
+    new list list1 {1 2 3}
+    new list list2 {4 5 6}
+    [combineLists $list1 $list2] --> list3
+    $list3
+} -result {1 2 3 4 5 6}
+
+test var& {
+    # Example in documentation for passing an object variable from proc
+} -body {
+    proc foo {bar} {
+        var new x $bar
+        return [$x &]
+    }
+    [foo {hello world}] --> bar
+    $bar
+} -result {hello world}
 
 # Check number of failed tests
 set nFailed $::tcltest::numTests(Failed)

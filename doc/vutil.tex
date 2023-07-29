@@ -285,64 +285,9 @@ hello world
 0
 \end{lstlisting}
 \end{example}
-
-
-\clearpage
-\subsection{Object Variable Operators}
-In addition to being able to manipulate object variables directly with Tcl commands, variables can also be manipulated with object variable operators.
-
-The operators ``\texttt{\methodlink[0]{var}{=}}'' and ``\texttt{\methodlink[0]{var}{:=}}'' assign the value of the object variable, and return the name of the object.
-\begin{syntax}
-\method{var}{=} \$value
-\end{syntax}
-\begin{syntax}
-\method{var}{:=} \$expr
-\end{syntax}
-\begin{args}
-\$value & Value to set object variable to. \\
-\$expr & Math expression to evaluate and set as object value.
-\end{args}
-
-The operator ``\texttt{\methodlink[0]{var}{<-}}'' assigns the value of the object directly from another object variable of the same class, and, like the operator  ``\texttt{\methodlink[0]{var}{=}}'', returns the name of the object.
-\begin{syntax}
-\method{var}{<-} \$otherVarObj 
-\end{syntax}
-\begin{args}
-\$otherVarObj & Other object variable to assign value from.
-\end{args}
-The operator ``\texttt{\methodlink[0]{var}{-{}->}}'' copies the object to a new reference variable, and returns the name of the new object.
-\begin{syntax}
-\method{var}{-{}->} \$refName
-\end{syntax}
-\begin{args}
-\$refName & Name of reference variable to tie to object. 
-\end{args}
-
-The example below demonstrates the myriad of ways object variables can be manipulated:
-
-\begin{example}{Object variable manipulation features}
-\begin{lstlisting}
-var new x; # Create blank variable $x
-[$x --> y] = 5; # Copy $x to $y, and set to 5
-[var new z] <- [$x <- $y]; # Create $z and set to x after setting $x to $y.
-$z := {[$z] + [$x]}; # Add $x to $z
-append $y [set $x 0]; # Append $y the value of $x after setting $x to 0
-puts [list [$x] [$y] [$z]]
-\end{lstlisting}
-\tcblower
-\begin{lstlisting}
-0 50 10
-\end{lstlisting}
-\end{example}
-
 \clearpage
 \subsection{Object Variable Methods}
 Additional information about the object variable can be accessed with object variable methods:
-
-The operator ``\textbf{\texttt{\methodlink[0]{var}{\&}}}'' simply returns the name of the object.
-\begin{syntax}
-\method{var}{\&}
-\end{syntax}
 
 The method \methodlink[0]{var}{info} accesses all object variable metadata. 
 Fields ``exists'' and ``type'' always exist, and ``value'' is populated when the variable is initialized.
@@ -374,7 +319,79 @@ Hello World
 \end{lstlisting}
 \end{example}
 
+\clearpage
+\subsection{Object Variable Operators}
+In addition to being able to manipulate object variables directly with Tcl commands, variables can also be manipulated with object variable operators.
 
+The operators ``\texttt{\methodlink[0]{var}{=}}'' and ``\texttt{\methodlink[0]{var}{:=}}'' assign the value of the object variable, and return the name of the object.
+\begin{syntax}
+\method{var}{=} \$value
+\end{syntax}
+\begin{syntax}
+\method{var}{:=} \$expr
+\end{syntax}
+\begin{args}
+\$value & Value to set object variable to. \\
+\$expr & Math expression to evaluate and set as object value.
+\end{args}
+
+The operator ``\texttt{\methodlink[0]{var}{<-}}'' assigns the value of the object directly from another object variable of the same class, and, like the operator  ``\texttt{\methodlink[0]{var}{=}}'', returns the name of the object.
+\begin{syntax}
+\method{var}{<-} \$otherVarObj 
+\end{syntax}
+\begin{args}
+\$otherVarObj & Other object variable to assign value from.
+\end{args}
+The operator ``\texttt{\methodlink[0]{var}{-{}->}}'' copies the object to a new reference variable, and returns the name of the new object.
+
+\begin{syntax}
+\method{var}{-{}->} \$refName
+\end{syntax}
+\begin{args}
+\$refName & Name of reference variable to tie to object. 
+\end{args}
+
+The example below demonstrates the myriad of ways object variables can be manipulated:
+
+\begin{example}{Object variable manipulation features}
+\begin{lstlisting}
+var new x; # Create blank variable $x
+[$x --> y] = 5; # Copy $x to $y, and set to 5
+[var new z] <- [$x <- $y]; # Create $z and set to x after setting $x to $y.
+$z := {[$z] + [$x]}; # Add $x to $z
+append $y [set $x 0]; # Append $y the value of $x after setting $x to 0
+puts [list [$x] [$y] [$z]]
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+0 50 10
+\end{lstlisting}
+\end{example}
+\clearpage
+\subsection{Returning an Object Variable from a Procedure}
+If a local object variable is created in a procedure, it will be cleaned up by garbage collection. 
+To return the object, use the operator ``\textbf{\texttt{\methodlink[0]{var}{\&}}}'', which copies the object to the variable ``\texttt{::vutil::temp}''. 
+\begin{syntax}
+\method{var}{\&}
+\end{syntax}
+\begin{example}{Returning ``hello world'' object variable from a procedure}
+\begin{lstlisting}
+proc foo {bar} {
+    var new x $bar
+    return [$x &]
+}
+[foo {hello world}] --> bar
+$bar print
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+hello world
+\end{lstlisting}
+\end{example}
+
+Note: The ``\textbf{\texttt{\methodlink[0]{var}{\&}}}'' operator always copies to the same variable, so you cannot return multiple objects this way. 
+To return multiple objects, either use the Tcl \textit{upvar} command, or use \cmdlink{untie} to remove garbage collection and then retie them in the calling scope.
+    
 \clearpage
 \section{Object Variable Types}
 The TclOO class \cmdlink{var} acts as a superclass for a pure-Tcl type system. Type classes are created and managed through the command ensemble \cmdlink{type}.
@@ -424,13 +441,13 @@ By default, from the superclass ``\texttt{::vutil::var}'', there are three prope
 
 \clearpage
 \subsection{Type Queries}
-A list of all defined types can be queried with the method \subcmdlink[0]{type}{names}. 
+A list of all defined types can be queried with the subcommand \subcmdlink[0]{type}{names}. 
 \begin{syntax}
 \subcommand{type}{names}
 \end{syntax}
 
-The existence of a type can be queried with the method \subcmdlink[0]{type}{exists}, and 
-the class associated with a type can be queried with the method \subcmdlink[0]{type}{class}. 
+The existence of a type can be queried with the subcommand \subcmdlink[0]{type}{exists}, and 
+the class associated with a type can be queried with the subcommand \subcmdlink[0]{type}{class}. 
 \begin{syntax}
 \subcommand{type}{exists} \$type
 \end{syntax}
@@ -441,23 +458,25 @@ the class associated with a type can be queried with the method \subcmdlink[0]{t
 \$type & Name of type. 
 \end{args}
 
-The method \subcmdlink[0]{type}{isa} checks if an object is of a specific type or of one of its subtypes.
+The subcommand \subcmdlink[0]{type}{isa} checks if an object is of a specific type or of one of its subtypes.
 If the type or object does not exist, this command will return an error.
+Similarly, the subcommand \subcmdlink[0]{type}{assert} returns an error if an object is not of a specific type or of one its subtypes.
 
 \begin{syntax}
-\subcommand{type}{isa} \$type \$objName
+\subcommand{type}{isa} \$type \$object
+\end{syntax}
+\begin{syntax}
+\subcommand{type}{assert} \$type \$object
 \end{syntax}
 \begin{args}
 \$type & Name of type. \\
-\$objName & Name of object.
+\$object & Name of object.
 \end{args}
 
 \begin{example}{Type assertion}
 \begin{lstlisting}
 proc foo {bar} {
-    if {![type isa list $bar]} {
-        return -code error "bar must be a list object" 
-    }
+    type assert list $bar
     $bar @ end
 }
 \end{lstlisting}

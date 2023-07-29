@@ -1,2 +1,2 @@
 if {![package vsatisfies [package provide Tcl] 8.6]} {return}
-package ifneeded vutil 0.7 [list source [file join $dir vutil.tcl]]
+package ifneeded vutil 0.8 [list source [file join $dir vutil.tcl]]
