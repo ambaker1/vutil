@@ -250,7 +250,6 @@ puts [subst $$a]; # 51
 \clearpage
 \section{Object Variable Class}
 The TclOO class \cmdlink{var} creates linked object variables that are tied to local variables, using \cmdlink{link} and \cmdlink{tie}.
-
 Object variables can be manipulated directly with Tcl commands, and calling the object variable directly as a command with no arguments (e.g. \texttt{[\$varObj]}) returns the object variable value.
 
 \begin{syntax}
@@ -259,7 +258,7 @@ var create \$objName \$refName <\$value>
 \end{syntax}
 \begin{args}
 \$objName & Explicit name for object. \\
-\$refName & Name of reference variable to tie to object. \\
+\$refName & Name of reference variable. For a temporary object, use ``\&''.\\
 \$value & Value to set object variable to. \\
 \end{args}
 
@@ -348,7 +347,7 @@ The operator ``\texttt{\methodlink[0]{var}{-{}->}}'' copies the object to a new 
 \method{var}{-{}->} \$refName
 \end{syntax}
 \begin{args}
-\$refName & Name of reference variable to tie to object. 
+\$refName & Name of reference variable. For a temporary object, use ``\&''.
 \end{args}
 
 The example below demonstrates the myriad of ways object variables can be manipulated:
@@ -371,6 +370,7 @@ puts [list [$x] [$y] [$z]]
 \subsection{Returning an Object Variable from a Procedure}
 If a local object variable is created in a procedure, it will be cleaned up by garbage collection. 
 To return the object, use the operator ``\textbf{\texttt{\methodlink[0]{var}{\&}}}'', which copies the object to the variable ``\texttt{::vutil::temp}''. 
+This is the same as calling the ``\texttt{\methodlink[0]{var}{-{}->}}'' method with a reference name of ``\textbf{\texttt{\&}}''.
 \begin{syntax}
 \method{var}{\&}
 \end{syntax}
