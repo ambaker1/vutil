@@ -23,6 +23,9 @@ namespace eval ::vutil {
     namespace export var type new; # Object variable class and types
 }
 
+# VARIOUS VARIABLE UTILITIES
+################################################################################
+
 # pvar --
 #
 # Same idea as parray. Prints the values of a variable to screen.
@@ -95,6 +98,9 @@ proc ::vutil::default {varName value} {
     }
     return $value
 }
+
+# READ-ONLY VARIABLES
+################################################################################
 
 # lock --
 #
@@ -384,6 +390,9 @@ proc ::vutil::InitObj {objName arrayName args} {
     return
 }
 
+# OBJECT VARIABLE SUPERCLASS
+################################################################################
+
 # var --
 #
 # Class for object variables that store a value and have garbage collection
@@ -428,14 +437,17 @@ proc ::vutil::InitObj {objName arrayName args} {
             my = [lindex $args 0]; # Assign value
         }
         # Tie and link object
+        if {$refName eq "&"} {
+            set refName ::vutil::temp
+        }
         upvar 1 $refName refVar
         ::vutil::link [::vutil::tie refVar [self]]
         return
     }
-
+    
     # Type --
     #
-    # Hard-coded variable type. Overwritten by "type add"
+    # Hard-coded variable type. Overwritten by "type new" or "type create"
     
     method Type {} {
         return var
@@ -482,7 +494,7 @@ proc ::vutil::InitObj {objName arrayName args} {
     
     # & --
     #
-    # Copy to the shared temporary object variable.
+    # Shorthand to copy to the shared temporary object variable.
     #
     # Syntax:
     # $varObj &
@@ -575,10 +587,13 @@ proc ::vutil::InitObj {objName arrayName args} {
     #
     # Arguments:
     # varObj        Variable object
-    # refName       Reference variable to copy to
+    # refName       Reference variable to copy to. "&" for temp object
     
     method CopyObject {refName} {
         # Copy, tie, and link the object
+        if {$refName eq "&"} {
+            set refName ::vutil::temp
+        }
         upvar 1 $refName refVar
         ::vutil::link [::vutil::tie refVar [::oo::copy [self]]]
         return $refVar
@@ -594,6 +609,9 @@ proc ::vutil::InitObj {objName arrayName args} {
         next $srcObj
     }
 }
+
+# TYPE FRAMEWORK
+################################################################################
 
 # type --
 #
@@ -635,7 +653,8 @@ proc ::vutil::type::new {type defScript} {
 
 # type create --
 #
-# Create a type class with a specific name
+# Create a type class with a specific name.
+# Prefixes the defScript with type superclass, method, and variable.
 #
 # Syntax:
 # type create $type $name $defScript
@@ -659,6 +678,10 @@ proc ::vutil::type::create {type name defScript} {
     ::oo::define $class variable ""
     # Call user-defined defScript.
     uplevel 1 [list ::oo::define $class $defScript]
+    # Validate that defScript did not remove superclass definition
+    if {$class ni [info class subclasses [type class var]]} {
+        return -code error "class must be subclass of [type class var]"
+    }
     # Set up traces to remove the type if the class is destroyed.
     trace add command $class {rename delete} [list ::vutil::type::Tracer $type]
     # Register the type class now that the setup was successful
@@ -744,6 +767,10 @@ proc ::vutil::type::class {type} {
 #
 # Syntax:
 # type isa $type $object
+#
+# Arguments:
+# type          Name of type
+# object        Object name to check
 
 proc ::vutil::type::isa {type object} {
     if {![info object isa object $object]} {
@@ -758,6 +785,10 @@ proc ::vutil::type::isa {type object} {
 #
 # Syntax:
 # type assert $type $object
+#
+# Arguments:
+# type          Name of type
+# object        Object name to check
 
 proc ::vutil::type::assert {type object} {
     if {![type isa $type $object]} {
@@ -765,18 +796,23 @@ proc ::vutil::type::assert {type object} {
     }
 }
 
+# TYPE LIBRARY
+################################################################################
+
 # new --    
 #
 # Create a new object variable (with type)
 #
-# new $type $arg ...
+# new $type $refName $arg ...
+#
+# Arguments:
+# type          Name of type
+# refName       Reference variable name. "&" for temp object.
+# arg ...       Arguments for type class
 
-proc ::vutil::new {type args} {
-    tailcall [type class $type] new {*}$args
+proc ::vutil::new {type refName args} {
+    tailcall [type class $type] new $refName {*}$args
 }
-
-# BASIC DATA TYPES
-################################################################################
 
 # new bool --
 #
@@ -991,4 +1027,4 @@ proc ::vutil::new {type args} {
 }
 
 # Finally, provide the package
-package provide vutil 0.8
+package provide vutil 0.9
