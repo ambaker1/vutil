@@ -478,6 +478,96 @@ test var& {
     $bar
 } -result {hello world}
 
+test gcoo_superclass1 {
+    # Test example of gcoo superclass
+} -body {
+    oo::class create veggie {
+        superclass ::vutil::gcoo
+        variable veggieType veggieCount
+        constructor {refName type count} {
+            set veggieType $type
+            set veggieCount $count
+            next $refName
+        }
+        method eat {} {
+            puts "yum!"
+            incr veggieCount -1
+        }
+        method type {} {
+            return $veggieType
+        }
+        method count {} {
+            return $veggieCount
+        }
+    }
+    veggie new x beans 10
+    $x eat
+    assert {[$x type] eq "beans"}
+    $x --> y
+    assert {[$y count] == 9}
+    unset x
+    assert {[llength [info class instances ::veggie]] == 1}
+    assert {[$y type] eq "beans"}
+    $y &
+    assert {[llength [info class instances ::veggie]] == 2}
+    $& eat
+    assert {[$y count] == 9}
+    $& count
+} -result {8}
+
+test gcoo_superclass2 {
+    # Test example of gcoo superclass
+} -body {
+    # Create simple container class that is subclass of ::vutil::gcoo
+    oo::class create container {
+        superclass ::vutil::gcoo
+        variable myValue
+        constructor {refName value} {
+            set myValue $value
+            next $refName
+        }
+        method set {value} {set myValue $value}
+        method value {} {return $myValue}
+    }
+    # Create procedure that returns an object
+    proc wrap {value} {
+        container new & $value
+    }
+    [wrap {hello world}] --> x
+    $x value
+} -result {hello world}
+
+test gcoo_superclass3 {
+    # Another example, a bit more sophisticated
+} -body {
+    # Create class that is subclass of ::vutil::gcoo
+    oo::class create count {
+        superclass ::vutil::gcoo
+        variable i
+        constructor {refName value} {
+            set i $value
+            next $refName
+        }
+        method value {} {
+            return $i
+        }
+        method incr {{value 1}} {
+            incr i $value
+        }
+    }
+    # Create procedure that returns a "count" object
+    proc sum {list} {
+        count new sum 0
+        foreach value $list {
+            $sum incr $value
+        }
+        $sum &
+    }
+    # Get sum, and store in "total"
+    [sum {1 2 3 4}] --> total
+    llength [info class instances count]
+} -result {2}
+
 # Check number of failed tests
 set nFailed $::tcltest::numTests(Failed)
 
