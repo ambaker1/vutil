@@ -11,14 +11,12 @@
 
 # Define namespace
 namespace eval ::vutil {
-    # Internal variables
-    variable temp; # Temporary object for returning from procedures
     # Exported Commands
     namespace export pvar; # Print variables and their values
     namespace export local; # Access local namespace variables (like global)
     namespace export default; # Set a variable if it does not exist
     namespace export lock unlock; # Hard set a Tcl variable
-    namespace export tie untie; # Tie a Tcl variable to a Tcl object
+    namespace export tie untie $&; # Tie a Tcl variable to a Tcl object
     namespace export link unlink; # Create an object variable
     namespace export var type new; # Object variable class and types
 }
@@ -194,25 +192,29 @@ proc ::vutil::LockTrace {value varName index op} {
 # Overrides locks. 
 #
 # Syntax:
-# tie $varName <$object>
+# tie $refName <$object>
 #
 # Arguments:
-# varName       Variable representing object
+# refName       Variable representing object
 # objName       Name of Tcl object
 
-proc ::vutil::tie {varName args} {
-    upvar 1 $varName refVar
+proc ::vutil::tie {refName args} {
+    # Substitute "&" with the temporary object variable 
+    if {$refName eq "&"} {
+        set refName ::&
+    }
+    upvar 1 $refName refVar
     # Switch for arity (allow for self-tie)
     if {[llength $args] == 0} {
         if {[info exists refVar]} {
             set objName $refVar
         } else {
-            return -code error "can't read \"$varName\": no such variable"
+            return -code error "can't read \"$refName\": no such variable"
         }
     } elseif {[llength $args] == 1} {
         set objName [lindex $args 0]
     } else {
-        return -code error "wrong # args: want \"tie varName ?objName?\""
+        return -code error "wrong # args: want \"tie refName ?objName?\""
     }
     # Verify object
     if {![info object isa object $objName]} {
@@ -280,6 +282,71 @@ proc ::vutil::TieTrace {objName varName index op} {
         }
     }
 }
+
+# $& --
+#
+# Access the global temporary object.
+# The variable "$" syntax does not work with operators such as "&",
+# so this is shorthand to call the last temporary object.
+#
+# Syntax:
+# $& <$arg ...>
+#
+# Arguments:
+# arg ...       Input arguments to temporary object.
+
+proc ::vutil::$& {args} {
+    tailcall ${::&} {*}$args
+}
+
+# gcoo --
+#
+# Superclass for objects with garbage collection. Not exported.
+#
+# Methods:
+# -->       Copy object to new reference variable
+# &         Copy to temporary reference variable
+
+::oo::class create ::vutil::gcoo {
+    # Constructor ties object to gc variable.
+    constructor {refName} {
+        uplevel 1 [list ::vutil::tie $refName [self]]
+    }
+    
+    # CopyObject (-->) --
+    #
+    # Copy object to new variable (returns new object name)
+    # Optionally, return to 
+    #
+    # Syntax:
+    # $obj --> $refName
+    #
+    # Arguments:
+    # refName       Reference variable to copy to. "&" for temp object
+    
+    method CopyObject {refName} {
+        uplevel 1 [list ::vutil::tie $refName [oo::copy [self]]]
+    }
+    method --> {refName} {
+        tailcall my CopyObject $refName
+    }
+    export -->
+    
+    # "&" --
+    #
+    # Shorthand to copy to the shared temporary object variable.
+    #
+    # Syntax:
+    # $obj &
+    
+    method & {} {
+        my CopyObject &
+    }
+    export &
+}
+
+# OBJECT VARIABLES
+################################################################################
 
 # link --
 #
@@ -371,31 +438,13 @@ proc ::vutil::ObjectLink {objName newName args} {
     }
 }
 
-# InitObj --
-# Tracer to handle access error messages for object variables
-
-proc ::vutil::InitObj {objName arrayName args} {
-    upvar 1 $arrayName ""
-    # If not initialized, throw DNE error.
-    if {![info exists (value)]} {
-        return -code error "can't read \"$objName\", no such variable"
-    }
-    # If object value is initialized, but objvar is not, initialize objvar
-    if {![info exists $objName]} {
-        set $objName $(value)
-    }
-    # Remove variable traces and set "exists" array field
-    trace remove variable (value) {read write} [list ::vutil::InitObj $objName]
-    set (exists) 1
-    return
-}
-
 # OBJECT VARIABLE SUPERCLASS
 ################################################################################
 
 # var --
 #
-# Class for object variables that store a value and have garbage collection
+# Subclass of gcoo, superclass for types. 
+# Links the object using ::vutil::link, so that is 
 # Note: Returns [self] for any method that modifies the object.
 # Returns $value only for "unknown", and returns metadata with other methods.
 # 
@@ -408,17 +457,16 @@ proc ::vutil::InitObj {objName arrayName args} {
 # value         Value to assign to the object variable.
 # name          Name of object (for "create" method)
 #
-# Object methods:
+# Additional object methods:
 # $varObj                   # Get object variable value
-# $varObj &                 # Copy to shared object, and return shared object.
 # $varObj print <arg ...>   # Print object variable value
 # $varObj info <$field>     # Get object variable info array (or single value)
 # $varObj = $value          # Value assignment
 # $varObj := $expr          # Expression assignment
 # $varObj1 <- $varObj2      # Object assignment (must be same class)
-# $varObj --> $refName      # Copy object (and set up tie/link)
 
 ::oo::class create ::vutil::var {
+    superclass ::vutil::gcoo
     variable ""; # Array of object data
     constructor {refName args} {
         # Check arity
@@ -430,19 +478,25 @@ proc ::vutil::InitObj {objName arrayName args} {
         set (type) [my Type]
         set (exists) 0
         # Set up initialization tracer
-        trace add variable (value) {read write} [list ::vutil::InitObj [self]]
+        trace add variable (value) {read write} [list ::vutil::InitVar [self]]
         # Initialize if value input is provided
         if {[llength $args] == 1} {
             # var new $refName $value
             my = [lindex $args 0]; # Assign value
         }
-        # Tie and link object
-        if {$refName eq "&"} {
-            set refName ::vutil::temp
-        }
-        upvar 1 $refName refVar
-        ::vutil::link [::vutil::tie refVar [self]]
+        # Set up garbage collection
+        next $refName
+        # Set up object variable link
+        ::vutil::link [self]
         return
+    }
+    
+    # Modify <cloned> method for establishing initialization trace and
+    # setting up object variable link. See documentation for oo::copy command
+    method <cloned> {srcObj} {
+        trace add variable (value) {read write} [list ::vutil::InitVar [self]]
+        ::vutil::link [self]
+        next $srcObj
     }
     
     # Type --
@@ -451,6 +505,21 @@ proc ::vutil::InitObj {objName arrayName args} {
     
     method Type {} {
         return var
+    }
+      
+    # print --
+    #
+    # Print value of object (shorthand for puts)
+    #
+    # Syntax:
+    # $varObj print <-nonewline> <$channelID>
+    #
+    # Arguments:
+    # -nonewline        Print without newline
+    # channelID         Channel ID open for writing. Default stdout (Tcl)
+    
+    method print {args} {
+        puts {*}$args $(value)
     }
 
     # info --
@@ -491,33 +560,6 @@ proc ::vutil::InitObj {objName arrayName args} {
         next {*}$args
     }
     unexport unknown
-    
-    # & --
-    #
-    # Shorthand to copy to the shared temporary object variable.
-    #
-    # Syntax:
-    # $varObj &
-    
-    method & {} {
-        my --> ::vutil::temp
-    }
-    export &
-    
-    # print --
-    #
-    # Print value of object (shorthand for puts)
-    #
-    # Syntax:
-    # $varObj print <-nonewline> <$channelID>
-    #
-    # Arguments:
-    # -nonewline        Print without newline
-    # channelID         Channel ID open for writing. Default stdout (Tcl)
-    
-    method print {args} {
-        puts {*}$args $(value)
-    }
     
     # SetValue (=) --
     #
@@ -576,41 +618,28 @@ proc ::vutil::InitObj {objName arrayName args} {
         tailcall my SetObject $objName {*}$args
     }
     export <-
-    
-    # CopyObject (-->) --
-    #
-    # Copy object to new variable (returns new object name)
-    #
-    # Syntax:
-    # my CopyObject $refName
-    # $varObj --> $refName
-    #
-    # Arguments:
-    # varObj        Variable object
-    # refName       Reference variable to copy to. "&" for temp object
-    
-    method CopyObject {refName} {
-        # Copy, tie, and link the object
-        if {$refName eq "&"} {
-            set refName ::vutil::temp
-        }
-        upvar 1 $refName refVar
-        ::vutil::link [::vutil::tie refVar [::oo::copy [self]]]
-        return $refVar
-    }
-    method --> {refName} {
-        tailcall my CopyObject $refName
-    }
-    export -->
-    # <cloned> method for establishing initialization trace
-    # See documentation for oo::copy command
-    method <cloned> {srcObj} {
-        trace add variable (value) {read write} [list ::vutil::InitObj [self]]
-        next $srcObj
-    }
 }
 
-# TYPE FRAMEWORK
+# InitVar --
+# Tracer to handle access error messages for initialization of object variables
+
+proc ::vutil::InitVar {objName arrayName args} {
+    upvar 1 $arrayName ""
+    # If not initialized, throw DNE error.
+    if {![info exists (value)]} {
+        return -code error "can't read \"$objName\", no such variable"
+    }
+    # If object value is initialized, but objvar is not, initialize objvar
+    if {![info exists $objName]} {
+        set $objName $(value)
+    }
+    # Remove variable traces and set "exists" array field
+    trace remove variable (value) {read write} [list ::vutil::InitVar $objName]
+    set (exists) 1
+    return
+}
+
+# OBJECT VARIABLE TYPE FRAMEWORK
 ################################################################################
 
 # type --
@@ -1027,4 +1056,4 @@ proc ::vutil::new {type refName args} {
 }
 
 # Finally, provide the package
-package provide vutil 0.9
+package provide vutil 0.10
