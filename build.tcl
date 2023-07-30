@@ -1,7 +1,7 @@
 package require tin 0.7.2
 tin import tcltest
 tin import assert from tin
-set version 0.9
+set version 0.10
 set config [dict create VERSION $version]
 tin bake src build $config
 tin bake doc/template/version.tin doc/template/version.tex $config
@@ -196,25 +196,25 @@ test obj_new {
 } -result {foo}
 
 test obj_ref {
-    # Verify that the "&" method returns "::vutil::temp"
+    # Verify that the "&" method returns "::&"
 } -body {
     set temp [$a &]
-    assert {$temp eq $::vutil::temp}
+    assert {$temp eq ${::&}}
 } -result {}
 
 test obj_ref_new {
-    # Verify that the "&" refName returns "::vutil::temp"
+    # Verify that the "&" refName returns "::&"
 } -body {
     var new & {hello world}
-    $::vutil::temp
+    $&
 } -result {hello world}
 
 test obj_ref_copy {
-    # Verify that the "&" refName returns "::vutil::temp"
+    # Verify that the "&" refName returns "::&"
 } -body {
     var new x {1 2 3}
     $x --> &
-    $::vutil::temp
+    ${&}
 } -result {1 2 3}
 
 test obj_create {
