@@ -21,9 +21,9 @@ This package provides various utilities for working with variables in Tcl, inclu
 \end{abstract}
 \clearpage
 \section{Printing Variables to Screen} 
-The \cmdlink{pvar} command is a short-hand function for printing the name and values of Tcl variables, in the same style as the Tcl \textit{parray} command.
+The \cmdlink{vputs} command is a short-hand function for printing the name and values of Tcl variables, in the same style as the Tcl \textit{parray} command.
 \begin{syntax}
-\command{pvar} \$name1 \$name2 …
+\command{vputs} \$name1 \$name2 …
 \end{syntax}
 \begin{args}
 \$name1 \$name2 … & Name(s) of variables to print
@@ -35,7 +35,7 @@ set a 5
 set b 7
 set c(1) 5
 set c(2) 6
-pvar a b c
+vputs a b c
 \end{lstlisting}
 \tcblower
 \begin{lstlisting}

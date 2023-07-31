@@ -12,7 +12,7 @@
 # Define namespace
 namespace eval ::vutil {
     # Exported Commands
-    namespace export pvar; # Print variables and their values
+    namespace export vputs; # Print variables and their values
     namespace export local; # Access local namespace variables (like global)
     namespace export default; # Set a variable if it does not exist
     namespace export lock unlock; # Hard set a Tcl variable
@@ -24,23 +24,23 @@ namespace eval ::vutil {
 # VARIOUS VARIABLE UTILITIES
 ################################################################################
 
-# pvar --
+# vputs --
 #
-# Same idea as parray. Prints the values of a variable to screen.
+# Same idea as parray. Prints the values of variables to screen.
 #
 # Syntax:
-# pvar $varName ...
+# vputs $varName ...
 #
 # Arguments:
 # $varName ...      Names of variable to print
 
-proc ::vutil::pvar {args} {
+proc ::vutil::vputs {args} {
     puts [uplevel 1 [list ::vutil::PrintVars {*}$args]]
 }
 
 # PrintVars --
 #
-# Private procedure for testing (returns what is printed with "pvar")
+# Private procedure for testing (returns what is printed with "vputs")
 
 proc ::vutil::PrintVars {args} {
     foreach varName $args {
