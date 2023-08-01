@@ -20,32 +20,6 @@ This package provides various utilities for working with variables in Tcl, inclu
 \end{center}
 \end{abstract}
 \clearpage
-\section{Printing Variables to Screen} 
-The \cmdlink{vputs} command is a short-hand function for printing the name and values of Tcl variables, in the same style as the Tcl \textit{parray} command.
-\begin{syntax}
-\command{vputs} \$name1 \$name2 …
-\end{syntax}
-\begin{args}
-\$name1 \$name2 … & Name(s) of variables to print
-\end{args}
-
-\begin{example}{Printing variables to screen}
-\begin{lstlisting}
-set a 5
-set b 7
-set c(1) 5
-set c(2) 6
-vputs a b c
-\end{lstlisting}
-\tcblower
-\begin{lstlisting}
-a = 5
-b = 7
-c(1) = 5
-c(2) = 6
-\end{lstlisting}
-\end{example}
-\clearpage
 \section{Initializing Local Namespace Variables}
 The command \cmdlink{local} is the counterpart to the Tcl \textit{global} command, and creates local variables linked to variables in the current namespace, by simply calling the Tcl \textit{variable} command multiple times.
 \begin{syntax}
