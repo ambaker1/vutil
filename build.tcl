@@ -518,6 +518,7 @@ test gcoo_superclass2 {
     # Create procedure that returns an object
     proc wrap {value} {
         container new & $value
+        return $&
     }
     [wrap {hello world}] --> x
     $x value
@@ -607,8 +608,9 @@ test leval_proc {
     new list x {1 2 3}
     new list y {4 5 6}
     [zip $x $y] --> z
-    $z
-} -result {{1 4} {2 5} {3 6}}
+    assert [$z] eq {{1 4} {2 5} {3 6}}
+    leval {new list & $@z; lexpr {$@@& + 2.0}}; # Nested list
+} -result {{3.0 6.0} {4.0 7.0} {5.0 8.0}}
 
 # Check number of failed tests
 set nFailed $::tcltest::numTests(Failed)
@@ -630,3 +632,5 @@ exec tclsh install.tcl
 tin forget vutil
 tin clear
 tin import vutil -exact $version
+
+
