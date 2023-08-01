@@ -1,13 +1,18 @@
 # vutil
 Advanced variable utilities for Tcl, including a type system and garbage collection for TclOO.
 
-For example, the following code prints "hello world":
+For example, the following code prints "HELLO WORLD":
 ```tcl
-proc foo {arg} {
-    var new x $arg
-    return [$x &]
+package require tin
+tin import vutil
+proc foo {string} {
+    type assert string $string
+    $string = [string toupper [$string]]
+    $string --> &; # Copy to shared reference
+    return $&
 }
-[foo {hello world}] --> bar
+new string bar {hello world}
+[foo $bar] --> bar
 $bar print
 ```
 
