@@ -11,52 +11,23 @@
 
 # Define namespace
 namespace eval ::vutil {
+    # Object reference name validation regex
+    variable refNameExp {(::+|\w+)+(\(\w+\))?}
+    # (::+|\w+)+            Matches alphanumeric namespace variables
+    # (\(\w+\))?            Matches alphanumeric array indices
     # Exported Commands
-    namespace export pvar; # Print variables and their values
     namespace export local; # Access local namespace variables (like global)
     namespace export default; # Set a variable if it does not exist
     namespace export lock unlock; # Hard set a Tcl variable
     namespace export tie untie $&; # Tie a Tcl variable to a Tcl object
     namespace export link unlink; # Create an object variable
     namespace export var type new; # Object variable class and types
+    namespace export refsub; # Substitute object references
+    namespace export leval lexpr; # List object evaluation
 }
 
 # VARIOUS VARIABLE UTILITIES
 ################################################################################
-
-# pvar --
-#
-# Same idea as parray. Prints the values of a variable to screen.
-#
-# Syntax:
-# pvar $varName ...
-#
-# Arguments:
-# $varName ...      Names of variable to print
-
-proc ::vutil::pvar {args} {
-    puts [uplevel 1 [list ::vutil::PrintVars {*}$args]]
-}
-
-# PrintVars --
-#
-# Private procedure for testing (returns what is printed with "pvar")
-
-proc ::vutil::PrintVars {args} {
-    foreach varName $args {
-        upvar 1 $varName var
-        if {![info exists var]} {
-            return -code error "can't read \"$varName\": no such variable"
-        } elseif {[array exists var]} {
-            foreach {key value} [array get var] {
-                lappend varList [list "$varName\($key\)" = $value]
-            }
-        } else {
-            lappend varList [list $varName = $var]
-        }
-    }
-    join $varList \n
-}
 
 # local --
 #
@@ -102,7 +73,8 @@ proc ::vutil::default {varName value} {
 
 # lock --
 #
-# Hard set of a variable. locked variables cannot be modified by set or default
+# Hard set of a variable. locked variables cannot be modified by set or default.
+# Cannot lock an entire array.
 #
 # Syntax:
 # lock $varName <$value>
@@ -113,6 +85,9 @@ proc ::vutil::default {varName value} {
 
 proc ::vutil::lock {varName args} {
     upvar 1 $varName var
+    if {[array exists var]} {
+        return -code error "cannot lock an array"
+    }
     # Switch for arity (allow for self-tie)
     if {[llength $args] == 0} {
         if {[info exists var]} {
@@ -148,6 +123,9 @@ proc ::vutil::lock {varName args} {
 proc ::vutil::unlock {args} {
     foreach varName $args {
         upvar 1 $varName var
+        if {[array exists var]} {
+            return -code error "cannot unlock an array"
+        }
         if {![info exists var]} {
             return -code error "can't unlock \"$varName\": no such variable"
         }
@@ -190,20 +168,26 @@ proc ::vutil::LockTrace {value varName index op} {
 # Tie a variable to a Tcl object, such that when the variable is modified or
 # unset, by unset or by going out of scope, that the object is destroyed as well
 # Overrides locks. 
+# Reference name must match the refvar pattern
 #
 # Syntax:
 # tie $refName <$object>
 #
 # Arguments:
-# refName       Variable representing object
+# refName       Reference variable representing object
 # objName       Name of Tcl object
 
 proc ::vutil::tie {refName args} {
-    # Substitute "&" with the temporary object variable 
+    # Create upvar link to reference variable
+    ValidateRefName $refName
     if {$refName eq "&"} {
-        set refName ::&
+        upvar 1 ::$& refVar
+    } else {
+        upvar 1 $refName refVar
     }
-    upvar 1 $refName refVar
+    if {[array exists refVar]} {
+        return -code error "cannot tie an array"
+    }
     # Switch for arity (allow for self-tie)
     if {[llength $args] == 0} {
         if {[info exists refVar]} {
@@ -247,6 +231,9 @@ proc ::vutil::tie {refName args} {
 proc ::vutil::untie {args} {
     foreach varName $args {
         upvar 1 $varName refVar
+        if {[array exists refVar]} {
+            return -code error "cannot untie an array"
+        }
         if {![info exists refVar]} {
             return -code error "can't untie \"$varName\": no such variable"
         }
@@ -283,6 +270,38 @@ proc ::vutil::TieTrace {objName varName index op} {
     }
 }
 
+# ValidateRefName
+#
+# Returns error if not a valid reference name, blank otherwise.
+#
+# Syntax:
+# ValidateRefName $refName
+#
+# Arguments:
+# refName       Candidate reference name
+
+proc ::vutil::ValidateRefName {refName} {
+    if {![IsRefName $refName]} {
+        return -code error "invalid object reference name \"$refName\""
+    }
+    return
+}
+
+# IsRefName --
+#
+# Returns true if valid refName, false otherwise.
+#
+# Syntax:
+# IsRefName $refName
+#
+# Arguments:
+# refName       Candidate reference name
+
+proc ::vutil::IsRefName {refName} {
+    variable refNameExp
+    expr {$refName eq "&" || [regexp $refNameExp $refName]}
+}
+
 # $& --
 #
 # Access the global temporary object.
@@ -296,7 +315,7 @@ proc ::vutil::TieTrace {objName varName index op} {
 # arg ...       Input arguments to temporary object.
 
 proc ::vutil::$& {args} {
-    tailcall ${::&} {*}$args
+    tailcall [set ::$&] {*}$args
 }
 
 # gcoo --
@@ -304,8 +323,7 @@ proc ::vutil::$& {args} {
 # Superclass for objects with garbage collection. Not exported.
 #
 # Methods:
-# -->       Copy object to new reference variable
-# &         Copy to temporary reference variable
+# -->       Copy object to new reference variable.
 
 ::oo::class create ::vutil::gcoo {
     # Constructor ties object to gc variable.
@@ -316,7 +334,6 @@ proc ::vutil::$& {args} {
     # CopyObject (-->) --
     #
     # Copy object to new variable (returns new object name)
-    # Optionally, return to 
     #
     # Syntax:
     # $obj --> $refName
@@ -331,18 +348,6 @@ proc ::vutil::$& {args} {
         tailcall my CopyObject $refName
     }
     export -->
-    
-    # "&" --
-    #
-    # Shorthand to copy to the shared temporary object variable.
-    #
-    # Syntax:
-    # $obj &
-    
-    method & {} {
-        my CopyObject &
-    }
-    export &
 }
 
 # OBJECT VARIABLES
@@ -570,10 +575,12 @@ proc ::vutil::ObjectLink {objName newName args} {
     # Syntax:
     # my SetValue $value
     # $varObj = $value
+    # $varObj := $expr
     #
     # Arguments:
     # varObj    Variable object
     # value     Value to assign
+    # expr      Value to pass through "expr" function
     
     method SetValue {value} {
         set (value) $value
@@ -932,7 +939,7 @@ proc ::vutil::new {type refName args} {
     method /= {expr} {
         my := {$(value) / [uplevel 1 [list expr $expr]]}
     }
-    export += -= *= /=
+    export := += -= *= /=
 }
 
 # new string --
@@ -980,6 +987,12 @@ proc ::vutil::new {type refName args} {
     method length {} {
         llength $(value)
     }
+    
+    # List expression
+    method := {expr} {
+        set (value) [uplevel 1 [list ::vutil::lexpr $expr]]
+    }
+    export :=
     
     # @ --
     #
@@ -1053,6 +1066,118 @@ proc ::vutil::new {type refName args} {
     method get {args} {
         dict get $(value) {*}$args
     }
+}
+
+# OBJECT ORIENTED EVALUATION
+################################################################################
+
+# refsub --
+#
+# Reference objects with the $@ symbol, like the $ symbol for variables.
+# Returns the substituted body, and the list of reference names used.
+# To refer to the global shared object, use $@&.
+#
+# To escape an object reference, use more @ symbols (such as $@@x)
+# Examples:
+# $@x: Refers to object value, replaced with ${$@(x)}
+# $@@x: Escaped $@x
+# $@@@x: Escaped $@@x (etc.)
+#
+# Syntax:
+# refsub $body
+#
+# Arguments:
+# body          Tcl body with object variable references with $@ref syntax
+
+proc ::vutil::refsub {body} {
+    variable refNameExp; # Regular expression for matching object variables
+    # Initialize refMap with any & references
+    set refMap ""
+    if {[regsub -all {\$@&} $body {${$@(::$\&)}} body]} {
+        dict set refMap ::$& ""
+    }
+    # Get all other references
+    set refExp "\\\$@($refNameExp)"; # e.g. $@x(1)
+    foreach {match refName ~ ~} [regexp -inline -all $refExp $body] {
+        dict set refMap [string range $match 2 end] ""
+    }
+    # Perform regsub
+    set body [regsub -all $refExp $body {${$@(\1)}}]
+    # Handle recursion for escaped object references
+    set body [string map {$@@ $@} $body]
+    # Return updated body and list of substituted references
+    return [list $body [dict keys $refMap]]
+}
+
+# leval --
+# 
+# Perform eval, but with list objects using @ref syntax
+#
+# Syntax:
+# leval $body <"-->" refName>
+#
+# Arguments:
+# body          Body to evaluate
+# refName       Optional reference name to copy to.
+
+proc ::vutil::leval {body args} {
+    # Check arity
+    if {[llength $args] == 1 || [llength $args] > 2} {
+        return -code error "wrong # args: should be\
+                \"leval body ?--> refName?\""
+    }
+    # Get reference name
+    set refName ""; # Default, returns value.
+    if {[llength $args] == 2} {
+        lassign $args op refName
+        if {$op ne "-->"} {
+            return -code error "unknown assignment operator \"$op\""
+        }
+        ValidateRefName $refName
+    }
+    # Perform substitution and get names of substituted variables
+    lassign [refsub $body] body subNames
+    if {[llength $subNames] == 0} {
+        return -code error "no list found"
+    }
+    # Get variable mapping
+    set varMap ""
+    foreach subName $subNames {
+        upvar 1 $subName subVar
+        type assert list $subVar
+        lappend varMap $@($subName) [$subVar]
+    }
+    # Perform lmap, and then unset the reference array
+    set result [uplevel 1 [list lmap {*}$varMap $body]]
+    upvar 1 $@ $@
+    foreach subName $subNames {
+        array unset $@ $subName
+    }
+    # Return either value or list object
+    if {$refName eq ""} {
+        return $result
+    } else {
+        tailcall new list $refName $result
+    }
+}
+
+# lexpr --
+# 
+# leval, but for math
+#
+# Syntax:
+# lexpr $expr <"-->" refName>
+#
+# Arguments:
+# expr          Expression, using $@refs for list references
+
+proc ::vutil::lexpr {expr args} {
+    # Check arity
+    if {[llength $args] == 1 || [llength $args] > 2} {
+        return -code error "wrong # args: should be\
+                \"lexpr expr ?--> refName?\""
+    }
+    tailcall leval [list expr $expr] {*}$args
 }
 
 # Finally, provide the package

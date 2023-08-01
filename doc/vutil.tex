@@ -12,6 +12,7 @@
 \title{\Huge Tcl Variable Utilities\\\small Version \version}
 \author{Alex Baker\\\small\url{https://github.com/ambaker1/vutil}}
 \date{\small\today}
+\makeindex[columns=2,title={Command Index}]
 \begin{document}
 \maketitle
 \begin{abstract}
@@ -19,32 +20,6 @@
 This package provides various utilities for working with variables in Tcl, including read-only variables, TclOO garbage collection, and an object-variable type system.
 \end{center}
 \end{abstract}
-\clearpage
-\section{Printing Variables to Screen} 
-The \cmdlink{pvar} command is a short-hand function for printing the name and values of Tcl variables, in the same style as the Tcl \textit{parray} command.
-\begin{syntax}
-\command{pvar} \$name1 \$name2 …
-\end{syntax}
-\begin{args}
-\$name1 \$name2 … & Name(s) of variables to print
-\end{args}
-
-\begin{example}{Printing variables to screen}
-\begin{lstlisting}
-set a 5
-set b 7
-set c(1) 5
-set c(2) 6
-pvar a b c
-\end{lstlisting}
-\tcblower
-\begin{lstlisting}
-a = 5
-b = 7
-c(1) = 5
-c(2) = 6
-\end{lstlisting}
-\end{example}
 \clearpage
 \section{Initializing Local Namespace Variables}
 The command \cmdlink{local} is the counterpart to the Tcl \textit{global} command, and creates local variables linked to variables in the current namespace, by simply calling the Tcl \textit{variable} command multiple times.
@@ -123,12 +98,13 @@ puts $a
 The command \cmdlink{lock} uses Tcl variable traces to make a read-only variable. 
 This is especially useful for controlling a parameter study of an analysis from a top-level.
 If attempting to modify a locked variable, it will throw a warning, but not an error.
+You can lock array elements, but not an entire array.
 
 \begin{syntax}
 \command{lock} \$varName <\$value>
 \end{syntax}
 \begin{args}
-\$varName & Variable name to lock. \\
+\$varName & Variable name to lock.  \\
 \$value & Value to lock variable at. Default self-locks (uses current value).
 \end{args}
 
@@ -165,6 +141,7 @@ As of Tcl version 8.6, there is no garbage collection for Tcl objects, they have
 The command \cmdlink{tie} is a solution for this problem, using variable traces to destroy the corresponding object when the variable is unset or modified. 
 For example, if an object is tied to a local procedure variable, the object will be destroyed when the procedure returns.
 Tie is separate from lock; a tie will override a lock, and a lock will override a tie. 
+You can tie array elements, but not an entire array.
 
 \begin{syntax}
 \command{tie} \$refName <\$object>
@@ -172,16 +149,6 @@ Tie is separate from lock; a tie will override a lock, and a lock will override 
 \begin{args}
 \$refName & Name of reference variable for garbage collection. \\
 \$object & Object to tie variable to. Default self-ties (uses current value).
-\end{args}
-
-To create a temporary object, use ``\textbf{\texttt{\&}}'' as the reference variable, which accesses the global variable ``\textbf{\texttt{\&}}''.
-Then, the temporary object, regardless of scope, can be accessed like so: 
-
-\begin{syntax}
-\command{\$\&} \$arg ...
-\end{syntax}
-\begin{args}
-\$arg ... & Arguments for temporary object.
 \end{args}
 
 In similar fashion to \cmdlink{unlock}, tied variables can be untied with the command \cmdlink{untie}.
@@ -210,11 +177,49 @@ invalid command name "::bar"
 \end{lstlisting}
 \end{example}
 \clearpage
-\section{Garbage Collection Superclass}
-The class \cmdlink{::vutil::gcoo} is a TclOO superclass that includes garbage collection.
+\subsection{Reference Variables}
+Valid reference variables for the \cmdlink{tie} command must match the following regular expression:
+\begin{lstlisting}
+(::+|\w+)+(\(\w+\))?
+\end{lstlisting}
+The one exception to this rule is the shared global reference ``\textbf{\texttt{\&}}''. 
+This shared reference, regardless of scope, can be accessed with the command ``\textbf{\texttt{\cmdlink{\$\&}}}''.
+\begin{syntax}
+\command{\$\&} \$arg ...
+\end{syntax}
+\begin{args}
+\$arg ... & Arguments for object.
+\end{args}
+
+Reference variables can also be referred to with the ``\texttt{\$@ref}'' syntax in the context of iterator functions. 
+The engine for this is the command \cmdlink{refsub}, which performs ``\texttt{\$@ref}'' substitution on a given string, returning the updated string and all matched reference names. 
+For example, ``\texttt{\$@ref}'' is converted to ``\texttt{\$\{\$@(ref)\}}''.
+To escape a reference, especially for nested substitution, simply add more ``\texttt{@}'' symbols, like ``\texttt{\$@@ref}''.
+\begin{syntax}
+\command{refsub} \$string
+\end{syntax}
+
+\begin{example}{Reference Variable Substitution}
+\begin{lstlisting}
+lassign [refsub {$@& + $@x(1) $@@y}] string refs
+puts $string
+puts $refs
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+${$@(::$&)} + ${$@(x(1))} $@y
+{::$&} x(1)
+\end{lstlisting}
+\end{example}
+A simple example of this is provided for the \subcmdlink[0]{new}{list} type, with the commands \cmdlink{leval} and \cmdlink{lexpr}.
+
+\clearpage
+\subsection{Garbage Collection Superclass}
+The class \cmdlink{gcoo} is a TclOO superclass that includes garbage collection. 
+This class is not exported, and not intended for direct use, as it is simply a template for classes with built-in garbage collection.
 The constructor is configured as shown below, and ties the object to the specified reference variable, using \cmdlink{tie}.
 \begin{syntax}
-\command{::vutil::gcoo} new \$refName \\
+::vutil::\command{gcoo} new \$refName \\
 ::vutil::gcoo create \$name \$refName
 \end{syntax}
 \begin{args}
@@ -222,13 +227,9 @@ The constructor is configured as shown below, and ties the object to the specifi
 \$name & Name of object.
 \end{args}
 
-In addition to tying the object to a reference variable in the superclass constructor, the \cmdlink{::vutil::gcoo} superclass also provides methods for copying the object to a new reference variable: ``\texttt{\methodlink[0]{gcoo}{-{}->}}'' and ``\textbf{\texttt{\methodlink[0]{gcoo}{\&}}}''.
-Note that the method ``\textbf{\texttt{\methodlink[0]{gcoo}{\&}}}'' is simply shorthand for copying to the global variable ``\textbf{\texttt{\&}}''.
+In addition to tying the object to a reference variable in the superclass constructor, the \cmdlink{::vutil::gcoo} superclass also provides a method for copying the object to a new reference variable: ``\texttt{\methodlink[0]{gcoo}{-{}->}}''.
 \begin{syntax}
 \method{gcoo}{-{}->} \$refName
-\end{syntax}
-\begin{syntax}
-\method{gcoo}{\&}
 \end{syntax}
 \begin{args}
 \$refName & Name of reference variable for garbage collection.
@@ -249,6 +250,7 @@ oo::class create container {
 }
 proc wrap {value} {
     container new & $value
+    return $&
 }
 [wrap {hello world}] --> x
 puts [$x value]
@@ -310,7 +312,7 @@ puts [subst $$a]; # 51
 \clearpage
 \section{Object Variable Class}
 The TclOO class \cmdlink{var} is a subclass of \cmdlink{::vutil::gcoo}, that also sets up an object variable link with \cmdlink{link}. 
-So, in addition to the superclass methods ``\texttt{\methodlink[0]{gcoo}{-{}->}}'' and ``\textbf{\texttt{\methodlink[0]{gcoo}{\&}}}'', object variables can be manipulated directly with Tcl commands, and calling the object variable directly as a command with no arguments (e.g. \texttt{[\$varObj]}) returns the object variable value.
+So, in addition to the copy method ``\texttt{\methodlink[0]{gcoo}{-{}->}}'', object variables can be manipulated directly with Tcl commands, and calling the object variable directly as a command with no arguments (e.g. \texttt{[\$varObj]}) returns the object variable value.
 
 \begin{syntax}
 \command{var} new \$refName <\$value> \\
@@ -701,7 +703,7 @@ puts [hmean 1 2]; # 1.3333
 
 \clearpage
 \subsection{Type ``list''}
-The type ``\subcmdlink[0]{new}{list}'' validates that the input is a list, and provides methods for list indexing/setting and getting list length. Additionally, it adds the field ``length'' to the variable info.
+The type ``\subcmdlink[0]{new}{list}'' validates that the input is a list, and additionally passes input from its main ``\texttt{:=}'' operator through the \cmdlink{lexpr} command.
 \begin{syntax}
 \subcommand{new}{list} \$refName <\$value>
 \end{syntax}
@@ -722,7 +724,7 @@ If setting, it sets the value and returns the object name.
 \begin{args}
 \$i ... & List indices. \\
 \$value & Value to set. \\
-\$expr & Math expression to set.
+\$expr & Math expression, passed through \cmdlink{lexpr} command.
 \end{args}
 
 \begin{example}{List example}
@@ -777,6 +779,8 @@ The method \textit{get} returns values in the dictionary, and the method \textit
 \$value & Value to set. 
 \end{args}
 \clearpage
+Below is an example of how the dictionary variable type can streamline basic dictionary queries.
+Note that not all of the subcommands of the Tcl \cmdlink{dict} are provided as dictionary object methods, but because it is an object variable, it can still be manipulated using normal \textit{dict} commands as well.
 \begin{example}{Dictionary example}
 \begin{lstlisting}
 # Create dictionary record
@@ -790,6 +794,7 @@ new dict record {
     }
     phone {555-1234} 
 }
+
 # Get values
 puts [$record size]; # Number of keys (3)
 puts [$record get name]; # John Doe
@@ -798,6 +803,9 @@ $record set address street [$record get address streetAddress]
 $record unset address streetAddress
 puts [$record get address street]; # 123 Main Street
 puts [$record exists address streetAddress]; # 0
+# Manipulate with normal dict commands
+dict lappend $record name Smith
+puts [$record get name]
 \end{lstlisting}
 \tcblower
 \begin{lstlisting}
@@ -805,8 +813,54 @@ puts [$record exists address streetAddress]; # 0
 John Doe
 123 Main Street
 0
+John Doe Smith
 \end{lstlisting}
 \end{example}
+\clearpage
+\section{List Object Mapping}
+Using the \cmdlink{refsub} syntax, you can create powerful wrapper commands. As a demonstration, this package provides two simple list object mapping commands: \cmdlink{leval} and \cmdlink{lexpr}.
+The \cmdlink{lexpr} command additionally is built-in to the ``\texttt{:=}'' operator for the \subcmdlink[0]{new}{list} type.
+
+\begin{syntax}
+\command{leval} \$body <"-{}->" \$refName>
+\end{syntax}
+\begin{syntax}
+\command{lexpr} \$expr <"-{}->" \$refName>
+\end{syntax}
+\begin{args}
+\$body & Body with list object references. \\
+\$expr & Tcl math expression with list object references. \\
+\$refName & Optional reference variable to tie resulting list to.
+\end{args}
+
+\begin{example}{Element-wise math}
+\begin{lstlisting}
+new list x {1 2 3}
+new list y {4 5 6}
+lexpr {$@x + $@y} --> z
+$z := {double($@z)}
+$z print
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+5.0 7.0 9.0
+\end{lstlisting}
+\end{example}
+
+\begin{example}{Zip a list together (modified from \url{https://www.tcl-lang.org/man/tcl/TclCmd/lmap.htm})}
+\begin{lstlisting}
+new list list1 {a b c d}
+new list list2 {1 2 3 4}
+leval {list $@list1 $@list2} --> zipped
+$zipped print
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+{a 1} {b 2} {c 3} {d 4}
+\end{lstlisting}
+\end{example}
+\clearpage
+{\large \printindex}
 \end{document}
 
 
