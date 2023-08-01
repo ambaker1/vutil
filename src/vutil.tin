@@ -178,15 +178,13 @@ proc ::vutil::LockTrace {value varName index op} {
 # objName       Name of Tcl object
 
 proc ::vutil::tie {refName args} {
-    variable refNameExp; # regular expression matching reference variables
-    # Check validity of reference name
-    if {$refName eq "&"} {
-        set refName ::$&; # substitute with global shared object
-    } elseif {![regexp $refNameExp $refName]} {
-        return -code error "invalid reference name"
-    }
     # Create upvar link to reference variable
-    upvar 1 $refName refVar
+    ValidateRefName $refName
+    if {$refName eq "&"} {
+        upvar 1 ::$& refVar
+    } else {
+        upvar 1 $refName refVar
+    }
     if {[array exists refVar]} {
         return -code error "cannot tie an array"
     }
@@ -270,6 +268,38 @@ proc ::vutil::TieTrace {objName varName index op} {
                     [list ::vutil::TieTrace $objName]
         }
     }
+}
+
+# ValidateRefName
+#
+# Returns error if not a valid reference name, blank otherwise.
+#
+# Syntax:
+# ValidateRefName $refName
+#
+# Arguments:
+# refName       Candidate reference name
+
+proc ::vutil::ValidateRefName {refName} {
+    if {![IsRefName $refName]} {
+        return -code error "invalid object reference name \"$refName\""
+    }
+    return
+}
+
+# IsRefName --
+#
+# Returns true if valid refName, false otherwise.
+#
+# Syntax:
+# IsRefName $refName
+#
+# Arguments:
+# refName       Candidate reference name
+
+proc ::vutil::IsRefName {refName} {
+    variable refNameExp
+    expr {$refName eq "&" || [regexp $refNameExp $refName]}
 }
 
 # $& --
@@ -1091,8 +1121,20 @@ proc ::vutil::refsub {body} {
 # refName       Optional reference name to copy to.
 
 proc ::vutil::leval {body args} {
-    # Interpret arguments
-    set refName [GetRefName "leval body" {*}$args]
+    # Check arity
+    if {[llength $args] == 1 || [llength $args] > 2} {
+        return -code error "wrong # args: should be\
+                \"leval body ?--> refName?\""
+    }
+    # Get reference name
+    set refName ""; # Default, returns value.
+    if {[llength $args] == 2} {
+        lassign $args op refName
+        if {$op ne "-->"} {
+            return -code error "unknown assignment operator \"$op\""
+        }
+        ValidateRefName $refName
+    }
     # Perform substitution and get names of substituted variables
     lassign [refsub $body] body subNames
     if {[llength $subNames] == 0} {
@@ -1130,38 +1172,12 @@ proc ::vutil::leval {body args} {
 # expr          Expression, using $@refs for list references
 
 proc ::vutil::lexpr {expr args} {
-    # Interpret input arguments
-    set refName [GetRefName "lexpr expr" {*}$args]
-    tailcall leval [list expr $expr] {*}$args
-}
-
-
-# GetRefName --
-#
-# Private procedure to get a copy reference name from the tail end of a command.
-# If refName returned is blank, it means to return the value.
-#
-# Syntax:
-# GetRefName $syntax $args
-#
-# syntax    Prefix of syntax to have in syntax error command
-# args      Tail end of args, where it can be <"-->" $refName>
-
-proc ::vutil::GetRefName {syntax args} {
-    variable refNameExp
-    # Interpret args
-    if {[llength $args] == 0} {
-        set refName ""
-    } elseif {[llength $args] == 2 && [lindex $args 0] eq "-->"} {
-        set refName [lindex $args 1]
-        if {$refName ne "&" && ![regexp $refNameExp $refName]} {
-            return -code error "invalid object reference name \"$refName\""
-        }
-    } else {
-        return -level 2 -code error "wrong # args: should be\
-                \"$syntax ?--> refName?\""
+    # Check arity
+    if {[llength $args] == 1 || [llength $args] > 2} {
+        return -code error "wrong # args: should be\
+                \"lexpr expr ?--> refName?\""
     }
-    return $refName
+    tailcall leval [list expr $expr] {*}$args
 }
 
 # Finally, provide the package
