@@ -1,19 +1,22 @@
 # vutil
 Advanced variable utilities for Tcl, including a type system and garbage collection for TclOO.
 
-For example, the following code prints "HELLO WORLD":
+For example, the following code demonstrates most of the features of vutil, and prints "HELLO WORLD":
 ```tcl
 package require tin
 tin import vutil
-proc foo {string} {
-    type assert string $string
-    $string = [string toupper [$string]]
-    $string --> &; # Copy to shared reference
-    return $&
+# Factory procedure (creates objects)
+proc foo {who} {
+    new string message {hello }; # initialize object
+    append $message $who; # modify with Tcl commands
+    $message --> &; # copy to shared object
+    return $&; # return shared object
 }
-new string bar {hello world}
-[foo $bar] --> bar
-$bar print
+new string bar; # create blank object
+$bar <- [foo {world}]; # object assignment
+$bar --> BAR; # object copying
+$BAR = [string toupper [$bar]]; # value assignment
+$BAR print; # additional object methods
 ```
 
 Full documentation [here](https://raw.githubusercontent.com/ambaker1/vutil/main/doc/vutil.pdf).
