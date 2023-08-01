@@ -1,7 +1,7 @@
 package require tin 0.7.2
 tin import tcltest
 tin import assert from tin
-set version 0.10
+set version 0.11
 set config [dict create VERSION $version]
 tin bake src build $config
 tin bake doc/template/version.tin doc/template/version.tex $config
@@ -10,8 +10,8 @@ source build/vutil.tcl
 namespace import vutil::*
 
 # Print variables
-test pvar {
-    # Test to make sure that pvar works
+test vputs {
+    # Test to make sure that vputs works
 } -body {
     set a 5
     set b 7
@@ -26,7 +26,7 @@ c(1) = 5
 c(2) = 6
 d(1) = hello}
 
-pvar a b c d(1); # for display
+vputs a b c d(1); # for display
 unset a b c d
 
 test local {
@@ -196,25 +196,25 @@ test obj_new {
 } -result {foo}
 
 test obj_ref {
-    # Verify that the "&" method returns "::&"
+    # Verify that the "&" refName returns "::$&"
 } -body {
-    set temp [$a &]
-    assert {$temp eq ${::&}}
+    set temp [$a --> &]
+    assert {$temp eq ${::$&}}
 } -result {}
 
 test obj_ref_new {
-    # Verify that the "&" refName returns "::&"
+    # Verify that the "&" refName returns "::$&"
 } -body {
     var new & {hello world}
     $&
 } -result {hello world}
 
 test obj_ref_copy {
-    # Verify that the "&" refName returns "::&"
+    # Verify that the "&" refName returns "::$&"
 } -body {
     var new x {1 2 3}
     $x --> &
-    ${&}
+    ${$&}
 } -result {1 2 3}
 
 test obj_create {
@@ -459,7 +459,7 @@ test assert&return {
         type assert list $x
         type assert list $y
         new list z [concat [$x] [$y]]
-        return [$z &]
+        return [$z --> &]
     }
     new list list1 {1 2 3}
     new list list2 {4 5 6}
@@ -472,7 +472,7 @@ test var& {
 } -body {
     proc foo {bar} {
         var new x $bar
-        return [$x &]
+        return [$x --> &]
     }
     [foo {hello world}] --> bar
     $bar
@@ -508,7 +508,7 @@ test gcoo_superclass1 {
     unset x
     assert {[llength [info class instances ::veggie]] == 1}
     assert {[$y type] eq "beans"}
-    $y &
+    $y --> &
     assert {[llength [info class instances ::veggie]] == 2}
     $& eat
     assert {[$y count] == 9}
@@ -561,12 +561,52 @@ test gcoo_superclass3 {
         foreach value $list {
             $sum incr $value
         }
-        $sum &
+        $sum --> &
     }
     # Get sum, and store in "total"
     [sum {1 2 3 4}] --> total
     llength [info class instances count]
 } -result {2}
+
+test refsub {
+    # Make sure that the reference substitution works
+} -body {
+    unset x y z
+    new list x {1 2 3}
+    new list xy(1) {2 3 4}
+    new list ::z(hi_there) {a b c}
+    new list & {10 20 30}
+    lassign [refsub {$@x $@xy(1) $@::z(hi_there) $@& $@@foo}] body refNames
+    assert {$refNames eq {{::$&} x xy(1) ::z(hi_there)}}; # $@& first
+    assert {$body eq {${@(x)} ${@(xy(1))} ${@(::z(hi_there))} ${@(::$&)} $@foo}}
+} -result {}
+
+test leval {
+    # Check that the list evaluation method works
+} -body {
+    new list x {1 2 3}
+    leval {lappend $x $@x}
+    $x
+} -result {1 2 3 1 2 3}
+
+test lexpr {
+    # Try out lexpr
+} -body {
+    new list x {1 2 3}
+    $x := {double($@x)}
+    $x
+} -result {1.0 2.0 3.0}
+
+test lexpr_nested {
+    # Nexted lexpr statement
+} -body {
+    new list x {1 2 3}
+    leval {
+        new list & [lrepeat $@x $@x]
+        lexpr {$@@& * 1.0}
+    } --> y
+    $y
+} -result {1.0 {2.0 2.0} {3.0 3.0 3.0}}
 
 # Check number of failed tests
 set nFailed $::tcltest::numTests(Failed)
