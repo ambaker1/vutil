@@ -12,6 +12,7 @@
 \title{\Huge Tcl Variable Utilities\\\small Version \version}
 \author{Alex Baker\\\small\url{https://github.com/ambaker1/vutil}}
 \date{\small\today}
+\makeindex[columns=2,title={Command Index}]
 \begin{document}
 \maketitle
 \begin{abstract}
@@ -181,7 +182,7 @@ Valid reference variables for the \cmdlink{tie} command must match the following
 \begin{lstlisting}
 (::+|\w+)+(\(\w+\))?
 \end{lstlisting}
-The one exception to this rule is the shared global reference variable ``\textbf{\texttt{\&}}''. 
+The one exception to this rule is the shared global reference ``\textbf{\texttt{\&}}''. 
 This shared reference, regardless of scope, can be accessed with the command ``\textbf{\texttt{\cmdlink{\$\&}}}''.
 \begin{syntax}
 \command{\$\&} \$arg ...
@@ -214,10 +215,11 @@ A simple example of this is provided for the \subcmdlink[0]{new}{list} type, wit
 
 \clearpage
 \subsection{Garbage Collection Superclass}
-The class \cmdlink{::vutil::gcoo} is a TclOO superclass that includes garbage collection.
+The class \cmdlink{gcoo} is a TclOO superclass that includes garbage collection. 
+This class is not exported, and not intended for direct use, as it is simply a template for classes with built-in garbage collection.
 The constructor is configured as shown below, and ties the object to the specified reference variable, using \cmdlink{tie}.
 \begin{syntax}
-\command{::vutil::gcoo} new \$refName \\
+::vutil::\command{gcoo} new \$refName \\
 ::vutil::gcoo create \$name \$refName
 \end{syntax}
 \begin{args}
@@ -777,6 +779,8 @@ The method \textit{get} returns values in the dictionary, and the method \textit
 \$value & Value to set. 
 \end{args}
 \clearpage
+Below is an example of how the dictionary variable type can streamline basic dictionary queries.
+Note that not all of the subcommands of the Tcl \cmdlink{dict} are provided as dictionary object methods, but because it is an object variable, it can still be manipulated using normal \textit{dict} commands as well.
 \begin{example}{Dictionary example}
 \begin{lstlisting}
 # Create dictionary record
@@ -790,6 +794,7 @@ new dict record {
     }
     phone {555-1234} 
 }
+
 # Get values
 puts [$record size]; # Number of keys (3)
 puts [$record get name]; # John Doe
@@ -798,6 +803,9 @@ $record set address street [$record get address streetAddress]
 $record unset address streetAddress
 puts [$record get address street]; # 123 Main Street
 puts [$record exists address streetAddress]; # 0
+# Manipulate with normal dict commands
+dict lappend $record name Smith
+puts [$record get name]
 \end{lstlisting}
 \tcblower
 \begin{lstlisting}
@@ -805,6 +813,7 @@ puts [$record exists address streetAddress]; # 0
 John Doe
 123 Main Street
 0
+John Doe Smith
 \end{lstlisting}
 \end{example}
 \clearpage
@@ -850,6 +859,8 @@ $zipped print
 {a 1} {b 2} {c 3} {d 4}
 \end{lstlisting}
 \end{example}
+\clearpage
+{\large \printindex}
 \end{document}
 
 
