@@ -73,7 +73,8 @@ proc ::vutil::default {varName value} {
 
 # lock --
 #
-# Hard set of a variable. locked variables cannot be modified by set or default
+# Hard set of a variable. locked variables cannot be modified by set or default.
+# Cannot lock an entire array.
 #
 # Syntax:
 # lock $varName <$value>
@@ -84,6 +85,9 @@ proc ::vutil::default {varName value} {
 
 proc ::vutil::lock {varName args} {
     upvar 1 $varName var
+    if {[array exists var]} {
+        return -code error "cannot lock an array"
+    }
     # Switch for arity (allow for self-tie)
     if {[llength $args] == 0} {
         if {[info exists var]} {
@@ -119,6 +123,9 @@ proc ::vutil::lock {varName args} {
 proc ::vutil::unlock {args} {
     foreach varName $args {
         upvar 1 $varName var
+        if {[array exists var]} {
+            return -code error "cannot unlock an array"
+        }
         if {![info exists var]} {
             return -code error "can't unlock \"$varName\": no such variable"
         }
@@ -180,6 +187,9 @@ proc ::vutil::tie {refName args} {
     }
     # Create upvar link to reference variable
     upvar 1 $refName refVar
+    if {[array exists refVar]} {
+        return -code error "cannot tie an array"
+    }
     # Switch for arity (allow for self-tie)
     if {[llength $args] == 0} {
         if {[info exists refVar]} {
@@ -223,6 +233,9 @@ proc ::vutil::tie {refName args} {
 proc ::vutil::untie {args} {
     foreach varName $args {
         upvar 1 $varName refVar
+        if {[array exists refVar]} {
+            return -code error "cannot untie an array"
+        }
         if {![info exists refVar]} {
             return -code error "can't untie \"$varName\": no such variable"
         }
