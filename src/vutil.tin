@@ -1036,7 +1036,7 @@ proc ::vutil::new {type refName args} {
 #
 # To escape an object reference, use more @ symbols (such as $@@x)
 # Examples:
-# $@x: Refers to object value, replaced with ${@(x)}
+# $@x: Refers to object value, replaced with ${$@(x)}
 # $@@x: Escaped $@x
 # $@@@x: Escaped $@@x (etc.)
 #
@@ -1050,7 +1050,7 @@ proc ::vutil::refsub {body} {
     variable refNameExp; # Regular expression for matching object variables
     # Initialize refMap with any & references
     set refMap ""
-    if {[regsub -all {\$@&} $body {${@(::$\&)}} body]} {
+    if {[regsub -all {\$@&} $body {${$@(::$\&)}} body]} {
         dict set refMap ::$& ""
     }
     # Get all other references
@@ -1059,9 +1059,9 @@ proc ::vutil::refsub {body} {
         dict set refMap [string range $match 2 end] ""
     }
     # Perform regsub
-    set body [regsub -all $refExp $body {${@(\1)}}]
+    set body [regsub -all $refExp $body {${$@(\1)}}]
     # Handle recursion for escaped object references
-    set body [string map {$@ $} $body]
+    set body [string map {$@@ $@} $body]
     # Return updated body and list of substituted references
     return [list $body [dict keys $refMap]]
 }
@@ -1090,13 +1090,13 @@ proc ::vutil::leval {body args} {
     foreach subName $subNames {
         upvar 1 $subName subVar
         type assert list $subVar
-        lappend varMap @($subName) [$subVar]
+        lappend varMap $@($subName) [$subVar]
     }
     # Perform lmap, and then unset the reference array
     set result [uplevel 1 [list lmap {*}$varMap $body]]
-    upvar 1 @ @
+    upvar 1 $@ $@
     foreach subName $subNames {
-        array unset @ $subName
+        array unset $@ $subName
     }
     # Return either value or list object
     if {$refName eq ""} {
@@ -1141,7 +1141,7 @@ proc ::vutil::GetRefName {syntax args} {
         set refName ""
     } elseif {[llength $args] == 2 && [lindex $args 0] eq "-->"} {
         set refName [lindex $args 1]
-        if {![regexp $refNameExp $refName]} {
+        if {$refName ne "&" && ![regexp $refNameExp $refName]} {
             return -code error "invalid object reference name \"$refName\""
         }
     } else {
