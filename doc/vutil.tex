@@ -97,12 +97,13 @@ puts $a
 The command \cmdlink{lock} uses Tcl variable traces to make a read-only variable. 
 This is especially useful for controlling a parameter study of an analysis from a top-level.
 If attempting to modify a locked variable, it will throw a warning, but not an error.
+You can lock array elements, but not an entire array.
 
 \begin{syntax}
 \command{lock} \$varName <\$value>
 \end{syntax}
 \begin{args}
-\$varName & Variable name to lock. \\
+\$varName & Variable name to lock.  \\
 \$value & Value to lock variable at. Default self-locks (uses current value).
 \end{args}
 
@@ -139,6 +140,7 @@ As of Tcl version 8.6, there is no garbage collection for Tcl objects, they have
 The command \cmdlink{tie} is a solution for this problem, using variable traces to destroy the corresponding object when the variable is unset or modified. 
 For example, if an object is tied to a local procedure variable, the object will be destroyed when the procedure returns.
 Tie is separate from lock; a tie will override a lock, and a lock will override a tie. 
+You can tie array elements, but not an entire array.
 
 \begin{syntax}
 \command{tie} \$refName <\$object>
@@ -190,7 +192,7 @@ This shared reference, regardless of scope, can be accessed with the command ``\
 
 Reference variables can also be referred to with the ``\texttt{\$@ref}'' syntax in the context of iterator functions. 
 The engine for this is the command \cmdlink{refsub}, which performs ``\texttt{\$@ref}'' substitution on a given string, returning the updated string and all matched reference names. 
-For example, ``\texttt{\$@ref}'' is converted to ``\texttt{\$\{@(ref)\}}''.
+For example, ``\texttt{\$@ref}'' is converted to ``\texttt{\$\{\$@(ref)\}}''.
 To escape a reference, especially for nested substitution, simply add more ``\texttt{@}'' symbols, like ``\texttt{\$@@ref}''.
 \begin{syntax}
 \command{refsub} \$string
@@ -204,10 +206,11 @@ puts $refs
 \end{lstlisting}
 \tcblower
 \begin{lstlisting}
-${@(::$&)} + ${@(x(1))} $@y
+${$@(::$&)} + ${$@(x(1))} $@y
 {::$&} x(1)
 \end{lstlisting}
 \end{example}
+A simple example of this is provided for the \subcmdlink[0]{new}{list} type, with the commands \cmdlink{leval} and \cmdlink{lexpr}.
 
 \clearpage
 \subsection{Garbage Collection Superclass}
@@ -245,6 +248,7 @@ oo::class create container {
 }
 proc wrap {value} {
     container new & $value
+    return $&
 }
 [wrap {hello world}] --> x
 puts [$x value]
