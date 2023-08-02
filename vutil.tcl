@@ -1144,6 +1144,12 @@ proc ::vutil::leval {body args} {
     set varMap ""
     foreach subName $subNames {
         upvar 1 $subName subVar
+        if {![info exists subVar]} {
+            return -code error "\"$subName\" does not exist"
+        }
+        if {[array exists subVar]} {
+            return -code error "\"$subName\" is an array"
+        }
         type assert list $subVar
         lappend varMap $@($subName) [$subVar]
     }
@@ -1181,4 +1187,4 @@ proc ::vutil::lexpr {expr args} {
 }
 
 # Finally, provide the package
-package provide vutil 0.11
+package provide vutil 0.11.1
