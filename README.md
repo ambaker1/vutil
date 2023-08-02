@@ -12,11 +12,9 @@ proc foo {who} {
     $message --> &; # copy to shared object
     return $&; # return shared object
 }
-new string bar; # create blank object
-$bar <- [foo {world}]; # object assignment
-$bar --> BAR; # object copying
-$BAR = [string toupper [$bar]]; # value assignment
-$BAR print; # additional object methods
+[foo {world}] --> bar; # create from proc
+$bar = [string toupper [$bar]]; # value assignment
+$bar print; # additional object methods
 ```
 
 Full documentation [here](https://raw.githubusercontent.com/ambaker1/vutil/main/doc/vutil.pdf).
