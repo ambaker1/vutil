@@ -1,5 +1,5 @@
 # Define version numbers
-set version 0.11
+set version 0.11.1
 set tin_version 0.8
 
 # Load required packages for testing
@@ -584,6 +584,21 @@ test lexpr {
     $x
 } -result {1.0 2.0 3.0}
 
+test lexpr_error1 {
+    # Verify that it will throw an error if a ref dne
+} -body {
+    new list x {1 2 3}
+    $x := {$@fooey + 1}
+} -result {"fooey" does not exist} -returnCodes error
+
+test lexpr_error2 {
+    # Verify that it will throw an error if a ref is an array
+} -body {
+    array set fooey ""
+    new list x {1 2 3}
+    $x := {$@fooey + 1}
+} -result {"fooey" is an array} -returnCodes error
+
 test lexpr_nested {
     # Nexted lexpr statement
 } -body {
@@ -611,6 +626,41 @@ test leval_proc {
     assert [$z] eq {{1 4} {2 5} {3 6}}
     leval {new list & $@z; lexpr {$@@& + 2.0}}; # Nested list
 } -result {{3.0 6.0} {4.0 7.0} {5.0 8.0}}
+
+test example1 {
+    # Old way of doing list math (from blog post)
+} -body {
+    set x {1 2 3}
+    set y [lmap xi $x {expr {$xi * 2}}]
+    set y
+} -result {2 4 6}
+
+test example2 {
+    # New way of doing list math (from blog post)
+} -body {
+new list x {1 2 3}
+lexpr {$@x * 2} --> y
+$y
+} -result {2 4 6}
+
+test example3 {
+    # leval stuff From blog post
+} -body {
+    new list a {hello world}
+    $a = [leval {string totitle $@a}]
+    $a; # prints "Hello World"
+} -result {Hello World}
+
+test example4 {
+    # Matrix example from blog post
+} -body {
+    new list IntegerMatrix {{1 2 3} {4 5 6} {7 8 9}}
+    leval {
+        new list row $@IntegerMatrix
+        lexpr {double($@@row)}
+    } --> DoubleMatrix
+    $DoubleMatrix @ 0; # prints "1.0 2.0 3.0"
+} -result {1.0 2.0 3.0}
 
 # Check number of failed tests
 set nFailed $::tcltest::numTests(Failed)
