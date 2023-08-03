@@ -286,6 +286,12 @@ test new_string {
     $string1 info
 } -result {exists 1 length 11 type string value {hello world}}
 
+test string_create {
+    # Assert that "create" is not an exported method
+} -body {
+    catch {[type class string] create foo bar}
+} -result 1
+
 test new_list {
     # Test all features of "list" type
 } -body {
