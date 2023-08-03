@@ -19,7 +19,7 @@ namespace eval ::vutil {
     namespace export local; # Access local namespace variables (like global)
     namespace export default; # Set a variable if it does not exist
     namespace export lock unlock; # Hard set a Tcl variable
-    namespace export tie untie $&; # Tie a Tcl variable to a Tcl object
+    namespace export tie untie; # Tie a Tcl variable to a Tcl object
     namespace export link unlink; # Create an object variable
     namespace export var type new; # Object variable class and types
     namespace export refsub; # Substitute object references
@@ -98,7 +98,7 @@ proc ::vutil::lock {varName args} {
     } elseif {[llength $args] == 1} {
         set value [lindex $args 0]
     } else {
-        return -code error "wrong # args: want \"lock varName ?value?\""
+        WrongNumArgs "lock varName ?value?"
     }
     # Remove any existing lock trace
     if {[info exists var]} {
@@ -181,10 +181,9 @@ proc ::vutil::tie {refName args} {
     # Create upvar link to reference variable
     ValidateRefName $refName
     if {$refName eq "&"} {
-        upvar 1 ::$& refVar
-    } else {
-        upvar 1 $refName refVar
-    }
+        set refName ::$&
+    } 
+    upvar 1 $refName refVar
     if {[array exists refVar]} {
         return -code error "cannot tie an array"
     }
@@ -198,7 +197,7 @@ proc ::vutil::tie {refName args} {
     } elseif {[llength $args] == 1} {
         set objName [lindex $args 0]
     } else {
-        return -code error "wrong # args: want \"tie refName ?objName?\""
+        WrongNumArgs "tie refName ?objName?"
     }
     # Verify object
     if {![info object isa object $objName]} {
@@ -314,7 +313,7 @@ proc ::vutil::IsRefName {refName} {
 # Arguments:
 # arg ...       Input arguments to temporary object.
 
-proc ::vutil::$& {args} {
+proc ::$& {args} {
     tailcall [set ::$&] {*}$args
 }
 
@@ -455,7 +454,6 @@ proc ::vutil::ObjectLink {objName newName args} {
 # 
 # Object creation:
 # var new $refName <$value>
-# var create $name $refName <$value>
 #
 # Arguments:
 # refName       Reference variable to tie to the object.
@@ -476,8 +474,7 @@ proc ::vutil::ObjectLink {objName newName args} {
     constructor {refName args} {
         # Check arity
         if {[llength $args] > 1} {
-            return -code error "wrong # args: want \"var new refName ?value?\"\
-                    or \"var create name refName ?value?\""
+            WrongNumArgs "var new refName ?value?"
         }
         # Initialize object
         set (type) [my Type]
@@ -646,6 +643,12 @@ proc ::vutil::InitVar {objName arrayName args} {
     return
 }
 
+# Unexport the "create" class for "::vutil::var"
+oo::objdefine ::vutil::var unexport create
+
+# Initialize the $& global temp object
+::vutil::var new &
+
 # OBJECT VARIABLE TYPE FRAMEWORK
 ################################################################################
 
@@ -718,6 +721,8 @@ proc ::vutil::type::create {type name defScript} {
     if {$class ni [info class subclasses [type class var]]} {
         return -code error "class must be subclass of [type class var]"
     }
+    # Unexport the "create" method
+    ::oo::objdefine $class unexport create
     # Set up traces to remove the type if the class is destroyed.
     trace add command $class {rename delete} [list ::vutil::type::Tracer $type]
     # Register the type class now that the setup was successful
@@ -838,17 +843,30 @@ proc ::vutil::type::assert {type object} {
 # new --    
 #
 # Create a new object variable (with type)
+# If reference name is "", it will create a temp object and return the value.
 #
 # new $type $refName $arg ...
 #
 # Arguments:
 # type          Name of type
-# refName       Reference variable name. "&" for temp object.
+# refName       Reference variable name. "&" for temp object. "" for value.
 # arg ...       Arguments for type class
 
 proc ::vutil::new {type refName args} {
+    # Value return
+    if {$refName eq ""} {
+        [type class $type] new & {*}$args
+        return [$&]
+    }
+    # Object return
     tailcall [type class $type] new $refName {*}$args
 }
+
+# Note:
+# This means that you can use the type library to validate Tcl types.
+# set x [new float {} 5]
+# puts $x; # 5.0
+# $&; # 5.0; # Last temporary object
 
 # new bool --
 #
@@ -869,7 +887,7 @@ proc ::vutil::new {type refName args} {
             tailcall if $(value) $body1
         } 
         if {[llength $args] != 2 || [lindex $args 0] ne {:}} {
-            return -code error "wrong # args: want \"[self] ? body1 : body2\""
+            ::vutil::WrongNumArgs "[self] ? body1 : body2"
         }
         set body2 [lindex $args 1]
         tailcall if $(value) $body1 else $body2
@@ -1118,27 +1136,18 @@ proc ::vutil::refsub {body} {
 #
 # Arguments:
 # body          Body to evaluate
-# refName       Optional reference name to copy to.
+# refName       Reference name to copy to. Default blank for value.
 
 proc ::vutil::leval {body args} {
-    # Check arity
-    if {[llength $args] == 1 || [llength $args] > 2} {
-        return -code error "wrong # args: should be\
-                \"leval body ?--> refName?\""
-    }
-    # Get reference name
-    set refName ""; # Default, returns value.
-    if {[llength $args] == 2} {
-        lassign $args op refName
-        if {$op ne "-->"} {
-            return -code error "unknown assignment operator \"$op\""
-        }
-        ValidateRefName $refName
+    # Interpret input
+    set refName [GetRefName]
+    if {[llength $args]} {
+        WrongNumArgs "leval body ?--> refName?"
     }
     # Perform substitution and get names of substituted variables
     lassign [refsub $body] body subNames
     if {[llength $subNames] == 0} {
-        return -code error "no list found"
+        return -code error "no list reference found"
     }
     # Get variable mapping
     set varMap ""
@@ -1159,12 +1168,8 @@ proc ::vutil::leval {body args} {
     foreach subName $subNames {
         array unset $@ $subName
     }
-    # Return either value or list object
-    if {$refName eq ""} {
-        return $result
-    } else {
-        tailcall new list $refName $result
-    }
+    # Return a list
+    tailcall new list $refName $result
 }
 
 # lexpr --
@@ -1178,13 +1183,47 @@ proc ::vutil::leval {body args} {
 # expr          Expression, using $@refs for list references
 
 proc ::vutil::lexpr {expr args} {
-    # Check arity
-    if {[llength $args] == 1 || [llength $args] > 2} {
-        return -code error "wrong # args: should be\
-                \"lexpr expr ?--> refName?\""
+    # Interpret input
+    set refName [GetRefName]
+    if {[llength $args]} {
+        WrongNumArgs "lexpr expr ?--> refName?"
     }
-    tailcall leval [list expr $expr] {*}$args
+    # Return a list
+    tailcall leval [list expr $expr] --> $refName
+}
+
+# GetRefName --
+#
+# Trims args of ?--> refName?. 
+# Returns refName (blank if none).
+#
+# Syntax:
+# set refName [GetRefName]
+#
+# Arguments:
+# args:         Input arguments
+# refName       Reference name
+
+proc ::vutil::GetRefName {} {
+    upvar 1 args args
+    set refName ""; # Default
+    if {[lindex $args end-1] eq "-->"} {
+        # Get and validate reference name
+        set refName [lindex $args end]
+        if {$refName ne ""} {
+            ValidateRefName $refName
+        }
+        # Trim args
+        set args [lrange $args 0 end-2]
+    }
+    return $refName
+}
+
+# WrongNumArgs utility error message
+
+proc ::vutil::WrongNumArgs {syntax} {
+    return -level 2 -code error "wrong # args: should be \"$message\""
 }
 
 # Finally, provide the package
-package provide vutil 0.11.1
+package provide vutil 0.12

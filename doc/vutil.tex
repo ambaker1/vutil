@@ -183,7 +183,7 @@ Valid reference variables for the \cmdlink{tie} command must match the following
 (::+|\w+)+(\(\w+\))?
 \end{lstlisting}
 The one exception to this rule is the shared global reference ``\textbf{\texttt{\&}}''. 
-This shared reference, regardless of scope, can be accessed with the command ``\textbf{\texttt{\cmdlink{\$\&}}}''.
+This shared reference, regardless of scope, can be accessed with the global command ``\textbf{\texttt{\cmdlink{\$\&}}}''.
 \begin{syntax}
 \command{\$\&} \$arg ...
 \end{syntax}
@@ -315,33 +315,29 @@ The TclOO class \cmdlink{var} is a subclass of \cmdlink{::vutil::gcoo}, that als
 So, in addition to the copy method ``\texttt{\methodlink[0]{gcoo}{-{}->}}'', object variables can be manipulated directly with Tcl commands, and calling the object variable directly as a command with no arguments (e.g. \texttt{[\$varObj]}) returns the object variable value.
 
 \begin{syntax}
-\command{var} new \$refName <\$value> \\
-var create \$objName \$refName <\$value> 
+\command{var} new \$refName <\$value>
 \end{syntax}
 \begin{args}
-\$objName & Explicit name for object. \\
 \$refName & Name of reference variable. \\
-\$value & Value to set object variable to. \\
+\$value & Value to set object variable to. 
 \end{args}
 
 \begin{example}{Object variables with garbage collection}
 \begin{lstlisting}
 # Example showing how object variables behave in procedures
 proc foo {value} {
-    # Create named object with reference variable "result"
-    var create myObj result $value
+    # Create object with reference variable "result"
+    var new result $value
     append $result { world}
     return [list $result [$result]]; # Returns name and value of object
 }
 set result [foo hello]; # Not the same "result"
 lassign $result name value
-puts $name; # ::myObj
 puts $value; # hello world
 puts [info object isa object $name]; # 0 (object was deleted when procedure returned)
 \end{lstlisting}
 \tcblower
 \begin{lstlisting}
-::myObj
 hello world
 0
 \end{lstlisting}
@@ -512,7 +508,7 @@ proc foo {bar} {
 
 \clearpage
 \subsection{Creating Type Variables}
-Then, using the types defined by \cmdlink{type}, the command \cmdlink{new} creates a new variable object of a specified type.
+Classes defined by \cmdlink{type} only have the constructor method \textit{new}, so as a convenience, the command \cmdlink{new} creates a new variable object of a specified type.
 
 \begin{syntax}
 \command{new} \$type \$refName <\$value>
@@ -830,7 +826,7 @@ The \cmdlink{lexpr} command additionally is built-in to the ``\texttt{:=}'' oper
 \begin{args}
 \$body & Body with list object references. \\
 \$expr & Tcl math expression with list object references. \\
-\$refName & Optional reference variable to tie resulting list to.
+\$refName & Optional reference variable to tie resulting list to. Blank to return value.
 \end{args}
 
 \begin{example}{Element-wise math}

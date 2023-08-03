@@ -1,5 +1,5 @@
 # Define version numbers
-set version 0.11.1
+set version 0.12
 set tin_version 0.8
 
 # Load required packages for testing
@@ -203,13 +203,6 @@ test obj_ref_copy {
     ${$&}
 } -result {1 2 3}
 
-test obj_create {
-    # Create an object with name
-} -body {
-    [var create myObj b] = foo
-    list [myObj] [$b]
-} -result {foo foo}
-
 test obj_gc {
     # Ensure that objects are deleted inside procedures (garbage collection)
 } -body {
@@ -292,6 +285,12 @@ test new_string {
     append $string1 { world}
     $string1 info
 } -result {exists 1 length 11 type string value {hello world}}
+
+test string_create {
+    # Assert that "create" is not an exported method
+} -body {
+    catch {[type class string] create foo bar}
+} -result 1
 
 test new_list {
     # Test all features of "list" type
@@ -661,6 +660,18 @@ test example4 {
     } --> DoubleMatrix
     $DoubleMatrix @ 0; # prints "1.0 2.0 3.0"
 } -result {1.0 2.0 3.0}
+
+test newvalue {
+    # Use the {} refName to return just the value
+} -body {
+    new float {} 3
+} -result {3.0}
+
+test newvalue& {
+    # Verify that the temp object contains the value.
+} -body {
+    $&
+} -result {3.0}
 
 # Check number of failed tests
 set nFailed $::tcltest::numTests(Failed)
