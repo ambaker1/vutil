@@ -19,7 +19,7 @@ namespace eval ::vutil {
     namespace export local; # Access local namespace variables (like global)
     namespace export default; # Set a variable if it does not exist
     namespace export lock unlock; # Hard set a Tcl variable
-    namespace export tie untie $&; # Tie a Tcl variable to a Tcl object
+    namespace export tie untie; # Tie a Tcl variable to a Tcl object
     namespace export link unlink; # Create an object variable
     namespace export var type new; # Object variable class and types
     namespace export refsub; # Substitute object references
@@ -181,10 +181,9 @@ proc ::vutil::tie {refName args} {
     # Create upvar link to reference variable
     ValidateRefName $refName
     if {$refName eq "&"} {
-        upvar 1 ::$& refVar
-    } else {
-        upvar 1 $refName refVar
-    }
+        set refName ::$&
+    } 
+    upvar 1 $refName refVar
     if {[array exists refVar]} {
         return -code error "cannot tie an array"
     }
@@ -314,7 +313,7 @@ proc ::vutil::IsRefName {refName} {
 # Arguments:
 # arg ...       Input arguments to temporary object.
 
-proc ::vutil::$& {args} {
+proc ::$& {args} {
     tailcall [set ::$&] {*}$args
 }
 
@@ -648,7 +647,7 @@ proc ::vutil::InitVar {objName arrayName args} {
 oo::objdefine ::vutil::var unexport create
 
 # Initialize the $& global temp object
-::vutil::var new & {}
+::vutil::var new &
 
 # OBJECT VARIABLE TYPE FRAMEWORK
 ################################################################################
