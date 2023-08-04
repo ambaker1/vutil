@@ -461,12 +461,14 @@ proc ::vutil::ObjectLink {objName newName args} {
 # name          Name of object (for "create" method)
 #
 # Additional object methods:
-# $varObj                   # Get object variable value
-# $varObj print <arg ...>   # Print object variable value
-# $varObj info <$field>     # Get object variable info array (or single value)
-# $varObj = $value          # Value assignment
-# $varObj := $expr          # Expression assignment
-# $varObj1 <- $varObj2      # Object assignment (must be same class)
+# $varObj                       Get object variable value
+# $varObj . <$op <$arg ...>>    Get object variable value, using mathops
+# $varObj print <$arg ...>      Print object variable value
+# $varObj info <$field>         Get object variable info array (or single value)
+# $varObj = $value              Value assignment
+# $varObj := $expr              Expression assignment
+# $varObj (+= -= *= /=) $expr   Self-operation assignment methods
+# $varObj1 <- $varObj2          Object assignment (must be same class)
 
 ::oo::class create ::vutil::var {
     superclass ::vutil::gcoo
@@ -550,20 +552,47 @@ proc ::vutil::ObjectLink {objName newName args} {
     # Object value query (returns value).
     #
     # Syntax:
-    # $varObj 
+    # my GetValue
+    # $varObj
     
     method GetValue {} {
         return $(value)
     }
     method unknown {args} {
         if {[llength $args] == 0} {
-            tailcall my GetValue
+            my GetValue
+        } else {
+            next {*}$args
         }
-        next {*}$args
     }
     unexport unknown
     
-    # SetValue (=) --
+    # GetOpValue (.) --
+    # 
+    # Get the value, run through mathop command
+    # If no operator is given for the "." method, it will call "GetValue"
+    #
+    # Syntax:
+    # my GetOpValue $op <$arg ...>
+    # $varObj . <$op <$arg ...>>
+    # 
+    # Arguments:
+    # op        ::tcl::mathop command
+    # arg...    arguments for operator
+   
+    method GetOpValue {op args} {
+        ::tcl::mathop::$op $(value) {*}$args
+    }
+    method . {args} {
+        if {[llength $args] == 0} {
+            my GetValue
+        } else {
+            my GetOpValue {*}$args
+        }
+    }
+    export .
+    
+    # SetValue (= :=) --
     #
     # Value assignment (uses private method "SetValue"). 
     # Modify "SetValue" to add data validation and add metadata.
@@ -584,12 +613,46 @@ proc ::vutil::ObjectLink {objName newName args} {
         return [self]
     }
     method = {args} {
-        tailcall my SetValue {*}$args
+        my SetValue {*}$args
     }
     method := {expr} {
-        my = [uplevel 1 [list expr $expr]]
+        my SetValue [uplevel 1 [list expr $expr]]
     }
-    export = :=
+    export = := 
+    
+    # SetOpValue --
+    # (+= -= *= /=) --
+    #
+    # Math operation on self.
+    # Modify "SetOpValue" to handle arrays and to bypass data validation.
+    # Returns object name
+    #
+    # Syntax:
+    # $varObj += $expr
+    # $varObj -= $expr
+    # $varObj *= $expr
+    # $varObj /= $expr
+    #
+    # Arguments:
+    # varObj    Variable object
+    # expr      Value to pass through "expr" function
+    
+    method SetOpValue {op args} {
+        my SetValue [my GetOpValue $op {*}$args]
+    }
+    method += {expr} {
+        my SetOpValue + [uplevel 1 [list expr $expr]]
+    }
+    method -= {expr} {
+        my SetOpValue - [uplevel 1 [list expr $expr]]
+    }
+    method *= {expr} {
+        my SetOpValue * [uplevel 1 [list expr $expr]]
+    }
+    method /= {expr} {
+        my SetOpValue * [uplevel 1 [list expr $expr]]
+    }
+    export += -= *= /=
   
     # SetObject (<-) --
     # 
@@ -849,14 +912,14 @@ proc ::vutil::type::assert {type object} {
 #
 # Arguments:
 # type          Name of type
-# refName       Reference variable name. "&" for temp object. "" for value.
+# refName       Reference variable name. "&" for global object. "" for value.
 # arg ...       Arguments for type class
 
 proc ::vutil::new {type refName args} {
     # Value return
     if {$refName eq ""} {
-        [type class $type] new & {*}$args
-        return [$&]
+        [type class $type] new temp {*}$args
+        return [$temp]
     }
     # Object return
     tailcall [type class $type] new $refName {*}$args
@@ -866,7 +929,6 @@ proc ::vutil::new {type refName args} {
 # This means that you can use the type library to validate Tcl types.
 # set x [new float {} 5]
 # puts $x; # 5.0
-# $&; # 5.0; # Last temporary object
 
 # new bool --
 #
@@ -877,10 +939,7 @@ proc ::vutil::new {type refName args} {
 
 ::vutil::type new bool {
     method SetValue {value} {
-        if {![string is boolean -strict $value]} {
-            return -code error "expected boolean value but got \"$value\""
-        }
-        next $value
+        next [::tcl::mathfunc::bool $value]
     }
     method ? {body1 args} {
         if {[llength $args] == 0} {
@@ -895,13 +954,21 @@ proc ::vutil::new {type refName args} {
     export ?
 }
 
+# new float --
+#
+# Double-precision floating point value.
+
+::vutil::type new float {
+    method SetValue {value} {
+        next [::tcl::mathfunc::double $value]
+    }
+}
+
 # new int --
 #
 # Asserts integer. Also has increment/decrement operators
 #
 # Additional methods:
-# +=        Increment by value
-# -=        Decrement by value
 # ++        Increment by 1
 # --        Decrement by 1
 
@@ -912,14 +979,6 @@ proc ::vutil::new {type refName args} {
         }
         next $value
     }
-    method += {expr} {
-        incr (value) [uplevel 1 [list expr $expr]]
-        return [self]
-    }
-    method -= {expr} {
-        incr (value) [uplevel 1 [list expr -($expr)]]
-        return [self]
-    }
     method ++ {} {
         incr (value)
         return [self]
@@ -928,36 +987,7 @@ proc ::vutil::new {type refName args} {
         incr (value) -1
         return [self]
     }
-    export += -= ++ --
-}
-
-# new float --
-#
-# Double-precision floating point value.
-#
-# Additional methods:
-# +=        Add value
-# -=        Subtract value
-# *=        Multiply by value
-# /=        Divide by value
-
-::vutil::type new float {
-    method SetValue {value} {
-        next [::tcl::mathfunc::double $value]
-    }
-    method += {expr} {
-        my := {$(value) + [uplevel 1 [list expr $expr]]}
-    }
-    method -= {expr} {
-        my := {$(value) - [uplevel 1 [list expr $expr]]}
-    }
-    method *= {expr} {
-        my := {$(value) * [uplevel 1 [list expr $expr]]}
-    }
-    method /= {expr} {
-        my := {$(value) / [uplevel 1 [list expr $expr]]}
-    }
-    export := += -= *= /=
+    export ++ --
 }
 
 # new string --
@@ -1011,6 +1041,11 @@ proc ::vutil::new {type refName args} {
         set (value) [uplevel 1 [list ::vutil::lexpr $expr]]
     }
     export :=
+    
+    # GetOpValue, Modified for lists
+    method GetOpValue {op args} {
+        lmap value $(value) {::tcl::mathop::$op $value {*}$args}
+    }
     
     # @ --
     #
@@ -1084,6 +1119,8 @@ proc ::vutil::new {type refName args} {
     method get {args} {
         dict get $(value) {*}$args
     }
+    # Unexport the math assignment operators (will not work)
+    unexport += -= *= /=
 }
 
 # OBJECT ORIENTED EVALUATION
@@ -1188,7 +1225,6 @@ proc ::vutil::lexpr {expr args} {
     if {[llength $args]} {
         WrongNumArgs "lexpr expr ?--> refName?"
     }
-    # Return a list
     tailcall leval [list expr $expr] --> $refName
 }
 
@@ -1226,4 +1262,4 @@ proc ::vutil::WrongNumArgs {syntax} {
 }
 
 # Finally, provide the package
-package provide vutil 0.12
+package provide vutil 0.13
