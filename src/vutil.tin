@@ -1258,7 +1258,7 @@ proc ::vutil::GetRefName {} {
 # WrongNumArgs utility error message
 
 proc ::vutil::WrongNumArgs {syntax} {
-    return -level 2 -code error "wrong # args: should be \"$message\""
+    tailcall return -code error "wrong # args: should be \"$message\""
 }
 
 # Finally, provide the package
