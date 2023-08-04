@@ -343,7 +343,7 @@ hello world
 \end{lstlisting}
 \end{example}
 \clearpage
-\subsection{Object Variable Methods}
+\subsection{Metadata Methods}
 Additional information about the object variable can be accessed with object variable methods:
 
 The method \methodlink[0]{var}{info} accesses all object variable metadata. 
@@ -377,7 +377,7 @@ Hello World
 \end{example}
 
 \clearpage
-\subsection{Object Variable Operators}
+\subsection{Direct Assignment Operators}
 In addition to being able to manipulate object variables directly with Tcl commands, variables can also be manipulated with object variable operators.
 
 The operators ``\texttt{\methodlink[0]{var}{=}}'' and ``\texttt{\methodlink[0]{var}{:=}}'' assign the value of the object variable, and return the name of the object.
@@ -391,7 +391,6 @@ The operators ``\texttt{\methodlink[0]{var}{=}}'' and ``\texttt{\methodlink[0]{v
 \$value & Value to set object variable to. \\
 \$expr & Math expression to evaluate and set as object value.
 \end{args}
-
 The operator ``\texttt{\methodlink[0]{var}{<-}}'' assigns the value of the object directly from another object variable of the same class, and, like the operator  ``\texttt{\methodlink[0]{var}{=}}'', returns the name of the object.
 \begin{syntax}
 \method{var}{<-} \$otherVarObj 
@@ -413,6 +412,39 @@ puts [list [$x] [$y] [$z]]
 \tcblower
 \begin{lstlisting}
 0 50 10
+\end{lstlisting}
+\end{example}
+
+\clearpage
+\subsection{Self-Referencing Math Operators}
+The operators ``\texttt{\methodlink[0]{var}{+=}}'', ``\texttt{\methodlink[0]{var}{-=}}'', ``\texttt{\methodlink[0]{var}{*=}}'', and ``\texttt{\methodlink[0]{var}{/=}}'' add, subtract, multiply, and divide the existing value of the object variable with the value given. 
+Like the ``\texttt{\methodlink[0]{var}{=}}'' operator, this also returns the name of the object.
+\begin{syntax}
+\method{var}{+=} \$expr \\
+\method{var}{-=} \$expr \\
+\method{var}{*=} \$expr \\
+\method{var}{/=} \$expr
+\end{syntax}
+\begin{args}
+\$expr & Tcl math expression to evaluate.
+\end{args}
+
+The operator ``\texttt{\methodlink[0]{var}{.}}'' with no arguments simply returns the value of the object. If arguments are provided, it returns the value after passing it through a ``\texttt{::tcl::mathop}'' operator.
+\begin{syntax}
+\method{var}{.} <\$op <\$arg ...>{}>
+\end{syntax}
+\begin{args}
+\$op & Valid ``\texttt{::tcl::mathop}'' operator. \\
+\$arg ... & Input arguments to mathop command.
+\end{args}
+
+\begin{example}{Sum of values}
+\begin{lstlisting}
+puts [[var new x 0] . + 1 2 3 4 5]
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+15
 \end{lstlisting}
 \end{example}
 
@@ -508,14 +540,14 @@ proc foo {bar} {
 
 \clearpage
 \subsection{Creating Type Variables}
-Classes defined by \cmdlink{type} only have the constructor method \textit{new}, so as a convenience, the command \cmdlink{new} creates a new variable object of a specified type.
+Classes defined by \cmdlink{type} only have the constructor method \textit{new}, so as a convenience, the command \cmdlink{new} creates a new variable object of a specified type. If the reference name provided is blank, it will simply return the value after passing it through the datatype's data validation.
 
 \begin{syntax}
 \command{new} \$type \$refName <\$value>
 \end{syntax}
 \begin{args}
 \$type & Name of type. \\
-\$refName & Name of reference variable to tie to object. \\
+\$refName & Name of reference variable to tie to object. Blank to return value. \\
 \$value & Value to set object variable to.
 \end{args}
 
@@ -574,7 +606,7 @@ The method ``\texttt{@}'' returns the character at the specified index.
 \end{args}
 \clearpage
 \subsection{Type ``bool'' (boolean)}
-The type ``\subcmdlink[0]{new}{bool}'' validates that the input is a valid boolean.
+The type ``\subcmdlink[0]{new}{bool}'' validates that the input is a valid boolean, passing input through the Tcl \textit{::tcl::mathfunc::bool} command.
 \begin{syntax}
 \subcommand{new}{bool} \$refName <\$value>
 \end{syntax}
@@ -620,18 +652,7 @@ The type ``\subcmdlink[0]{new}{int}'' validates that the input is a valid intege
 \$refName & Name of reference variable to tie to object. \\
 \$value & Integer value.
 \end{args}
-
-In addition to the standard assignment operators ``\texttt{=}'' and ``\texttt{:=}'', the ``int'' type provides the increment/decrement assignment operators ``\texttt{+=}'' and ``\texttt{-=}''. 
-\begin{syntax}
-\$intObj \$op \$expr 
-\end{syntax}
-\begin{args}
-\$op & Assignment operator: \\
-\quad += & \quad Increments the variable by the value of \texttt{\$expr}. \\
-\quad -= & \quad Decrements the variable by the value of \texttt{\$expr}. \\
-\$expr & Tcl math expression to evaluate.
-\end{args}
-There are also two short-hand increment/decrement operators, ``\texttt{++}'' and ``\texttt{-{}-}'', which simply increment or decrement the integer object by 1.
+In addition to the standard math operators, this type also has two short-hand increment/decrement operators, ``\texttt{++}'' and ``\texttt{-{}-}'', which simply increment or decrement the integer object by 1.
 \begin{syntax}
 \$intObj ++ 
 \end{syntax}
@@ -664,19 +685,6 @@ The type ``\subcmdlink[0]{new}{float}'' validates that input is a double-precisi
 \$value & Float value.
 \end{args}
 
-In addition to the standard assignment operators ``\texttt{=}'' and ``\texttt{:=}'', the ``float'' type provides the following: 
-\begin{syntax}
-\$floatObj \$op \$expr
-\end{syntax}
-\begin{args}
-\$op & Assignment operator: \\
-\quad += & \quad Adds the value of \texttt{\$expr} to the variable. \\
-\quad -= & \quad Subtracts the value of \texttt{\$expr} from the variable. \\
-\quad *= & \quad Multiplies the variable by the value of \texttt{\$expr}. \\
-\quad /= & \quad Divides  the variable by the value of \texttt{\$expr}. \\
-\$expr & Tcl math expression to evaluate.
-\end{args}
-
 \begin{example}{Float example (procedure with type assertion)}
 \begin{lstlisting}
 # Harmonic mean of two numbers (converts to float)
@@ -699,7 +707,7 @@ puts [hmean 1 2]; # 1.3333
 
 \clearpage
 \subsection{Type ``list''}
-The type ``\subcmdlink[0]{new}{list}'' validates that the input is a list, and additionally passes input from its main ``\texttt{:=}'' operator through the \cmdlink{lexpr} command.
+The type ``\subcmdlink[0]{new}{list}'' validates that the input is a list, and additionally passes input from its main ``\texttt{:=}'' operator through the \cmdlink{lexpr} command. All self-referencing operators pass through the Tcl \textit{lmap} command.
 \begin{syntax}
 \subcommand{new}{list} \$refName <\$value>
 \end{syntax}
@@ -744,7 +752,7 @@ exists 1 length 4 type list value {hey there world 6}
 \end{example}
 \clearpage
 \subsection{Type ``dict''}
-The type ``\subcmdlink[0]{new}{dict}'' validates that the input is a Tcl dictionary, and provides methods for getting/setting/unsetting dictionary values, checking if values exist, and getting the dictionary size. Additionally, it adds the field ``size'' to the variable info.
+The type ``\subcmdlink[0]{new}{dict}'' validates that the input is a Tcl dictionary, and provides methods for getting/setting/unsetting dictionary values, checking if values exist, and getting the dictionary size. Additionally, it adds the field ``size'' to the variable info. Self-referencing math operators are disabled for this type.
 \begin{syntax}
 \subcommand{new}{dict} \$refName <\$value>
 \end{syntax}
