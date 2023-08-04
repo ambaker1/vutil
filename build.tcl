@@ -1,5 +1,5 @@
 # Define version numbers
-set version 0.12
+set version 0.13
 set tin_version 0.8
 
 # Load required packages for testing
@@ -667,11 +667,44 @@ test newvalue {
     new float {} 3
 } -result {3.0}
 
-test newvalue& {
-    # Verify that the temp object contains the value.
+test crossprod {
+    # Do some crazy math
 } -body {
-    $&
-} -result {3.0}
+    # Cross-product, the new way!
+    proc crossprod {a b} {
+        new list a $a
+        new list b $b
+        new list c {}
+        $c @ 0 := {[$a @ 1]*[$b @ 2] - [$a @ 2]*[$b @ 1]}
+        $c @ 1 := {[$a @ 2]*[$b @ 0] - [$a @ 0]*[$b @ 2]}
+        $c @ 2 := {[$a @ 0]*[$b @ 1] - [$a @ 1]*[$b @ 0]}
+        return [$c .]
+    }
+    crossprod {3 -3 1} {4 9 2}
+} -result {-15 -2 39}
+
+test sum {
+    # Sum of values
+} -body {
+    proc sum {args} {
+        new var x 0
+        $x . + {*}$args
+    }
+    sum 20 10 12 2.0 1
+} -result {45.0}
+
+test add_lists {
+
+} -body {
+    proc add {a b} {
+        type assert list $a
+        type assert list $b
+        lexpr {$@a + $@b}
+    }
+    new list A {1 2 3}
+    new list B {2.0 2.0 4.0}
+    add $A $B
+} -result {3.0 4.0 7.0}
 
 # Check number of failed tests
 set nFailed $::tcltest::numTests(Failed)
