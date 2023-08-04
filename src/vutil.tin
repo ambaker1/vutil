@@ -912,14 +912,14 @@ proc ::vutil::type::assert {type object} {
 #
 # Arguments:
 # type          Name of type
-# refName       Reference variable name. "&" for temp object. "" for value.
+# refName       Reference variable name. "&" for global object. "" for value.
 # arg ...       Arguments for type class
 
 proc ::vutil::new {type refName args} {
     # Value return
     if {$refName eq ""} {
-        [type class $type] new & {*}$args
-        return [$&]
+        [type class $type] new temp {*}$args
+        return [$temp]
     }
     # Object return
     tailcall [type class $type] new $refName {*}$args
@@ -929,7 +929,6 @@ proc ::vutil::new {type refName args} {
 # This means that you can use the type library to validate Tcl types.
 # set x [new float {} 5]
 # puts $x; # 5.0
-# $&; # 5.0; # Last temporary object
 
 # new bool --
 #
@@ -940,10 +939,7 @@ proc ::vutil::new {type refName args} {
 
 ::vutil::type new bool {
     method SetValue {value} {
-        if {![string is boolean -strict $value]} {
-            return -code error "expected boolean value but got \"$value\""
-        }
-        next $value
+        next [::tcl::mathfunc::bool $value]
     }
     method ? {body1 args} {
         if {[llength $args] == 0} {
@@ -1229,7 +1225,6 @@ proc ::vutil::lexpr {expr args} {
     if {[llength $args]} {
         WrongNumArgs "lexpr expr ?--> refName?"
     }
-    # Return a list
     tailcall leval [list expr $expr] --> $refName
 }
 
