@@ -592,7 +592,7 @@ proc ::vutil::ObjectLink {objName newName args} {
     }
     export .
     
-    # SetValue (= :=) --
+    # SetValue (= := |=) --
     #
     # Value assignment (uses private method "SetValue"). 
     # Modify "SetValue" to add data validation and add metadata.
@@ -602,11 +602,13 @@ proc ::vutil::ObjectLink {objName newName args} {
     # my SetValue $value
     # $varObj = $value
     # $varObj := $expr
+    # $varObj |= $command
     #
     # Arguments:
     # varObj    Variable object
     # value     Value to assign
     # expr      Value to pass through "expr" function
+    # command   Command or script to evaluate.
     
     method SetValue {value} {
         set (value) $value
@@ -618,10 +620,13 @@ proc ::vutil::ObjectLink {objName newName args} {
     method := {expr} {
         my SetValue [uplevel 1 [list expr $expr]]
     }
-    export = := 
+    method |= {command} {
+        my SetValue [uplevel 1 $command]
+    }
+    export = := |=
     
     # SetOpValue --
-    # (+= -= *= /=) --
+    # (+= -= *= /= .=) --
     #
     # Math operation on self.
     # Modify "SetOpValue" to handle arrays and to bypass data validation.
@@ -632,10 +637,13 @@ proc ::vutil::ObjectLink {objName newName args} {
     # $varObj -= $expr
     # $varObj *= $expr
     # $varObj /= $expr
+    # $varObj .= $op $arg ...
     #
     # Arguments:
     # varObj    Variable object
     # expr      Value to pass through "expr" function
+    # op        Operator
+    # arg ...   Input args to operator
     
     method SetOpValue {op args} {
         my SetValue [my GetOpValue $op {*}$args]
@@ -652,7 +660,10 @@ proc ::vutil::ObjectLink {objName newName args} {
     method /= {expr} {
         my SetOpValue * [uplevel 1 [list expr $expr]]
     }
-    export += -= *= /=
+    method .= {op args} {
+        my SetOpValue $op {*}$args
+    }
+    export += -= *= /= .=
   
     # SetObject (<-) --
     # 
@@ -1040,7 +1051,10 @@ proc ::vutil::new {type refName args} {
     method := {expr} {
         set (value) [uplevel 1 [list ::vutil::lexpr $expr]]
     }
-    export :=
+    method |= {body} {
+        set (value) [uplevel 1 [list ::vutil::leval $body]]
+    }
+    export := |=
     
     # GetOpValue, Modified for lists
     method GetOpValue {op args} {
