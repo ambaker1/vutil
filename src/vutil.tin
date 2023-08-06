@@ -1191,7 +1191,7 @@ proc ::vutil::refsub {body} {
 
 proc ::vutil::leval {body args} {
     # Interpret input
-    set refName [GetRefName]
+    set args [lassign [GetRefName {*}$args] refName]
     if {[llength $args]} {
         WrongNumArgs "leval body ?--> refName?"
     }
@@ -1235,7 +1235,7 @@ proc ::vutil::leval {body args} {
 
 proc ::vutil::lexpr {expr args} {
     # Interpret input
-    set refName [GetRefName]
+    set args [lassign [GetRefName {*}$args] refName]
     if {[llength $args]} {
         WrongNumArgs "lexpr expr ?--> refName?"
     }
@@ -1244,18 +1244,17 @@ proc ::vutil::lexpr {expr args} {
 
 # GetRefName --
 #
-# Trims args of ?--> refName?. 
-# Returns refName (blank if none).
+# Trims tail of args ( ?--> refName? ). 
+# Returns refName (blank if none), and args
 #
 # Syntax:
-# set refName [GetRefName]
+# set args [lassign [GetRefName {*}$args] refName]
 #
 # Arguments:
 # args:         Input arguments
 # refName       Reference name
 
-proc ::vutil::GetRefName {} {
-    upvar 1 args args
+proc ::vutil::GetRefName {args} {
     set refName ""; # Default
     if {[lindex $args end-1] eq "-->"} {
         # Get and validate reference name
@@ -1266,7 +1265,7 @@ proc ::vutil::GetRefName {} {
         # Trim args
         set args [lrange $args 0 end-2]
     }
-    return $refName
+    return [list $refName {*}$args]
 }
 
 # WrongNumArgs utility error message
