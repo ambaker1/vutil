@@ -1202,6 +1202,7 @@ proc ::vutil::leval {body args} {
     }
     # Get variable mapping
     set varMap ""
+    set length -1
     foreach subName $subNames {
         upvar 1 $subName subVar
         if {![info exists subVar]} {
@@ -1211,6 +1212,11 @@ proc ::vutil::leval {body args} {
             return -code error "\"$subName\" is an array"
         }
         type assert list $subVar
+        if {$length == -1} {
+            set length [$subVar length]
+        } elseif {[$subVar length] != $length} {
+            return -code error "incompatible list lengths"
+        }
         lappend varMap $@($subName) [$subVar]
     }
     # Perform lmap, and then unset the reference array
@@ -1252,7 +1258,6 @@ proc ::vutil::lexpr {expr args} {
 #
 # Arguments:
 # args:         Input arguments
-# refName       Reference name
 
 proc ::vutil::GetRefName {args} {
     set refName ""; # Default
