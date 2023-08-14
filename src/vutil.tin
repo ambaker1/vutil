@@ -11,13 +11,9 @@
 
 # Define namespace
 namespace eval ::vutil {
-    # Global reference variables (initialize)
+    # Global reference variable (initialize)
     set ::& ""
-    set ::. ""
     proc ::$& {args} {tailcall [set ::&] {*}$args}
-    proc ::$. {args} {tailcall [set ::.] {*}$args}
-    # Internal variables
-    variable aliases ""; # Stack of aliases
     # Object reference name validation regex
     variable refNameExp {(::+|\w+)+(\(\w+\))?}
     # (::+|\w+)+            Matches alphanumeric namespace variables
@@ -214,14 +210,8 @@ proc ::vutil::tie {refName args} {
         return -code error "\"$objName\" is not an object"
     }
     
-    # Clean up existing tie traces 
-    if {[info exists refVar] && $refVar eq $objName} {
-        # If tying to the same object, untie the variable.
-        untie refVar;
-    } else {
-        # Write to the variable, triggering the tie trace.
-        set refVar $objName
-    }
+    # Set variable to object (triggers any tie traces)
+    set refVar $objName
     
     # Verify that assignment worked. If not, variable is locked.
     if {$refVar ne $objName} {
@@ -256,17 +246,32 @@ proc ::vutil::untie {args} {
         if {![info exists refVar]} {
             return -code error "can't untie \"$refName\": no such variable"
         }
-        set objName $refVar
-        trace remove variable refVar {write unset} \
-                [list ::vutil::TieVarTrace $objName]
-        trace remove command $objName rename ::vutil::TieObjTrace
+        RemoveTie refVar $refVar
     }
     return
 }
 
+# RemoveTie --
+#
+# Private command to remove tie traces from a variable
+#
+# Syntax:
+# RemoveTie $refName $objName
+# 
+# Arguments:
+# refName       Variable name to remove traces from
+# objName       Name of object to remove them from
+
+proc ::vutil::RemoveTie {refName objName} {
+    upvar 1 $refName refVar
+    trace remove variable refVar {write unset} \
+                [list ::vutil::TieVarTrace $objName]
+    catch {trace remove command $objName rename ::vutil::TieObjTrace}
+}
+
 # TieVarTrace --
 #
-# Destroys associated Tcl object and removes traces
+# Removes traces and destroys associated Tcl object
 #
 # Syntax:
 # TieVarTrace $objName $varName $index $op
@@ -284,12 +289,11 @@ proc ::vutil::TieVarTrace {objName varName index op} {
         } else {
             set refName refVar
         }
-        # If value is still equal to object, return
+        RemoveTie $refName $objName
+        # Return if setting to self (which just removes the tie)
         if {[set $refName] eq $objName} {
             return
         }
-        # Untie variable
-        untie $refName
     }
     # Destroy the object if it still exists.
     if {[info object isa object $objName]} {
@@ -401,8 +405,6 @@ proc ::vutil::link {objName} {
     trace add variable $objName {read write unset} \
             [list ::vutil::LinkVarTrace $objName]
     trace add command $objName {rename delete} ::vutil::LinkObjTrace
-    trace add execution $objName {enter leave} \
-            [list ::vutil::LinkExecTrace $objName]
     # Return the name of the object
     return $objName
 }
@@ -430,8 +432,6 @@ proc ::vutil::unlink {args} {
         }
         # Remove object command traces
         trace remove command $objName {rename delete} ::vutil::LinkObjTrace
-        trace remove execution $objName {enter leave} \
-                [list ::vutil::LinkExecTrace $objName]
     }
     return
 }
@@ -472,23 +472,6 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     }
 }
 
-# LinkExecTrace --
-# Define the alias variable (and save the old)
-
-proc ::vutil::LinkExecTrace {objName args} {
-    variable aliases
-    switch [lindex $args end] {
-        enter { # Set the alias, and save previous on alias stack.
-            lappend aliases [set ::.]
-            set ::. $objName
-        }
-        leave { # Reset alias stack and previous alias.
-            set ::. [lindex $aliases end]
-            set aliases [lrange $aliases 0 end-1]
-        }
-    }
-}
-
 # OBJECT VARIABLE SUPERCLASS
 ################################################################################
 
@@ -515,9 +498,6 @@ proc ::vutil::LinkExecTrace {objName args} {
 # $varObj1 <- $varObj2          Object assignment (must be same class)
 #
 # Additional object methods:
-# $varObj | $body               Command evaluation (self referenced with $.)
-# $varObj : $body               Expression evaluation (self referenced with $.)
-# $varObj . $ops                Operation evaluation
 # $varObj |= $body              Command assignment
 # $varObj := $expr              Expression assignment
 # $varObj .= $ops               Operation assignment
@@ -647,14 +627,20 @@ proc ::vutil::LinkExecTrace {objName args} {
     # GetEvalValue --
     # SetEvalValue --
     #
-    # Get/Set the value, run through uplevel.
+    # Get/Set the value, run through uplevel, with $0 available to refer 
+    # to the object.
     #
     # Arguments:
     # body      Body to evaluate.
     # level     Uplevel amount. Default 1.
     
     method GetEvalValue {body {level 1}} {
-        uplevel [incr level] $body
+        incr level; # Intended to be a private method
+        # Define self-reference variable
+        upvar $level 0 self
+        set self [self]
+        # Perform evaluation, and reset reference variable
+        uplevel $level $body
     }
     method SetEvalValue {body {level 1}} {
         my SetValue [my GetEvalValue $body [incr level]]
@@ -729,8 +715,8 @@ proc ::vutil::LinkExecTrace {objName args} {
     #
     # Syntax:
     # $varObj; # Returns value
-    # $varObj | $body; # Evaluate, with $varObj available as "$."
-    # $varObj : $expr; # Evaluate, with $varObj available as "$."
+    # $varObj | $body; # Evaluate, with $varObj available as "$0"
+    # $varObj : $expr; # Evaluate, with $varObj available as "$0"
     # $varObj . $ops; # Run value through Tcl mathop.
     #
     # Arguments:
@@ -798,6 +784,7 @@ proc ::vutil::VarInitTrace {objName arrayName args} {
     }
     # Remove variable trace
     trace remove variable (value) read [list ::vutil::VarInitTrace $objName]
+    set $objName $(value)
     return
 }
 
@@ -1044,43 +1031,14 @@ proc ::vutil::new {type refName args} {
     export @
 }
 
-# new numeric --
-#
-# Asserts numeric. Is not considered subtype of string to avoid shimmering.
-# Also has special math operators that work on every numeric value.
-
-::vutil::type new numeric {
-    method Validate {value} {
-        if {![string is double -strict $value]} {
-            return -code error "expected numeric value but got \"$value\""
-        }
-        next $value
-    }
-    # Special operators
-    method + {args} {my GetOpValue + {*}$args}
-    method - {args} {my GetOpValue - {*}$args}
-    method * {args} {my GetOpValue * {*}$args}
-    method / {args} {my GetOpValue / {*}$args}
-    method ** {args} {my GetOpValue ** {*}$args}
-    export + - * / **
-    method += {args} {my SetOpValue + {*}$args}
-    method -= {args} {my SetOpValue - {*}$args}
-    method *= {args} {my SetOpValue * {*}$args}
-    method /= {args} {my SetOpValue / {*}$args}
-    method **= {args} {my GetOpValue ** {*}$args}
-    export += -= *= /= **=
-}
-
 # new bool --
 #
 # Asserts boolean. Also has new if-statement control structure
 #
 # Additional methods:
 # ?         Shorthand if-statement (tailcalls "if")
-# !         Negation.
 
 ::vutil::type new bool {
-    superclass -append [::vutil::type class numeric]
     method Validate {value} {
         next [::tcl::mathfunc::bool $value]
     }
@@ -1094,8 +1052,7 @@ proc ::vutil::new {type refName args} {
         set body2 [lindex $args 1]
         tailcall if [my GetValue] $body1 else $body2
     }
-    method ! {} {my GetOpValue !}
-    export ? !
+    export ?
 }
 
 # new float --
@@ -1103,7 +1060,6 @@ proc ::vutil::new {type refName args} {
 # Numeric subtype. Forces double-precision floating point value.
 
 ::vutil::type new float {
-    superclass -append [::vutil::type class numeric]
     method Validate {value} {
         next [::tcl::mathfunc::double $value]
     }
@@ -1118,7 +1074,6 @@ proc ::vutil::new {type refName args} {
 # --        Decrement by 1
 
 ::vutil::type new int {
-    superclass -append [::vutil::type class numeric]
     method Validate {value} {
         if {![string is integer -strict $value]} {
             return -code error "expected integer value but got \"$value\""
@@ -1172,7 +1127,7 @@ proc ::vutil::new {type refName args} {
     # @ --
     #
     # Method to get or set a value in a list.
-    # Use $@& to refer to current value.
+    # Use $0 to refer to a temporary variable object containing current value
     #
     # Syntax:
     # $list @ ?$i ...?
@@ -1186,12 +1141,12 @@ proc ::vutil::new {type refName args} {
         if {[lindex $args end-1] eq "="} {
             # $list @ $i ?$i ...? = $value
             set value [lindex $args end]
-        } elseif {[lindex $args end-1 in {|= := .=}} {
+        } elseif {[lindex $args end-1] in {|= := .=}} {
             # $list @ $i ?$i ...? $op $input
             set indices [lrange $args 0 end-2]
             set op [lindex $args end-1]
             set input [lindex $args end]
-            ::vutil::new list temp [list [lindex [my GetValue] {*}$indices]]
+            ::vutil::new var temp [list [lindex [my GetValue] {*}$indices]]
             uplevel 1 [list $temp $op $input]
             set value [lindex [$temp] 0]
         } else {
@@ -1281,9 +1236,6 @@ proc ::vutil::refsub {body} {
     if {[regsub -all {\$@&} $body {${@(::\&)}} body]} {
         dict set refMap ::& ""
     }
-    if {[regsub -all {\$@\.} $body {${@(::.)}} body]} {
-        dict set refMap ::. ""
-    }
     # Get all other references
     set refExp "\\\$@($refNameExp)"; # e.g. $@x(1)
     foreach {match refName ~ ~} [regexp -inline -all $refExp $body] {
@@ -1306,7 +1258,7 @@ proc ::vutil::refsub {body} {
 #
 # Arguments:
 # body          Body to evaluate, using $@refs for list references.
-# list          Optional list to iterate with, using "$@&" reference.
+# list          Optional list to iterate with, using "$@0" reference.
 # refName       Reference name to copy to. Default blank to return value.
 
 proc ::vutil::leval {body args} {
@@ -1316,7 +1268,8 @@ proc ::vutil::leval {body args} {
         WrongNumArgs "leval body ?list? ?--> refName?"
     }
     # Create temporary list object
-    new list temp [lindex $args 0]; # creates $& alias
+    upvar 1 0 self
+    new list self [lindex $args 0]; # creates $0 alias
     # Perform substitution and get names of substituted variables
     lassign [refsub $body] body subNames
     if {[llength $subNames] == 0} {
@@ -1343,7 +1296,6 @@ proc ::vutil::leval {body args} {
         }
         lappend varMap @($subName) [$subVar]
     }
-    # Return a list
     tailcall new list $refName [uplevel 1 [list lmap {*}$varMap $body]]
 }
 
@@ -1356,7 +1308,7 @@ proc ::vutil::leval {body args} {
 #
 # Arguments:
 # expr          Expression, using $@refs for list references
-# list          Optional list to iterate with, using "$@." reference.
+# list          Optional list to iterate with, using "$@0" reference.
 # refName       Reference name to copy to. Default blank to return value.
 
 proc ::vutil::lexpr {expr args} {
