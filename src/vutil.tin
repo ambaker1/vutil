@@ -481,9 +481,8 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
 
 # var --
 #
-# Subclass of gcoo, superclass for types. 
-# Links the object using ::vutil::link, so that is 
-# Note: Returns [self] for any method that modifies the object.
+# Subclass of gcoo, superclass for types. Links the object using ::vutil::link
+# Returns [self] for any method that modifies the object.
 # Returns $value only for "unknown", and returns metadata with other methods.
 # 
 # Object creation:
@@ -492,7 +491,6 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
 # Arguments:
 # refName       Reference variable to tie to the object.
 # value         Value to assign to the object variable.
-# name          Name of object (for "create" method)
 #
 # Basic methods:
 # $varObj                       Get value
@@ -558,6 +556,7 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     #
     # Arguments:
     # value     New value for object
+    # expr      Math expression to evaluate
     
     method GetValue {} {
         # Handle DNE case
@@ -587,6 +586,7 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     # Syntax:
     # GetObject
     # SetObject $objName
+    # UpdateFields
     #
     # Arguments:
     # objName       Object of same class
