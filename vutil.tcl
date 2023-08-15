@@ -611,9 +611,9 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
         return [self]
     }
     method UpdateFields {} {}
+
     
-    
-    # PUBLIC METHODS (DO NOT MODIFY)
+    # PUBLIC METHODS
     ########################################################################
       
     # print --
