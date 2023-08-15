@@ -100,7 +100,7 @@ proc ::vutil::lock {varName args} {
     } elseif {[llength $args] == 1} {
         set value [lindex $args 0]
     } else {
-        WrongNumArgs "lock varName ?value?"
+        return -code error "wrong # args: should be \"lock varName ?value?\""
     }
     # Remove any existing lock trace
     if {[info exists var]} {
@@ -201,7 +201,7 @@ proc ::vutil::tie {refName args} {
     } elseif {[llength $args] == 1} {
         set objName [lindex $args 0]
     } else {
-        WrongNumArgs "tie refName ?objName?"
+        return -code error "wrong # args: should be \"tie refName ?objName?\""
     }
     
     # Verify that input is an object
@@ -481,9 +481,8 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
 
 # var --
 #
-# Subclass of gcoo, superclass for types. 
-# Links the object using ::vutil::link, so that is 
-# Note: Returns [self] for any method that modifies the object.
+# Subclass of gcoo, superclass for types. Links the object using ::vutil::link
+# Returns [self] for any method that modifies the object.
 # Returns $value only for "unknown", and returns metadata with other methods.
 # 
 # Object creation:
@@ -492,7 +491,6 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
 # Arguments:
 # refName       Reference variable to tie to the object.
 # value         Value to assign to the object variable.
-# name          Name of object (for "create" method)
 #
 # Basic methods:
 # $varObj                       Get value
@@ -508,7 +506,8 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     constructor {refName args} {
         # Check arity
         if {[llength $args] > 1} {
-            WrongNumArgs "var new refName ?value?"
+            return -code error "wrong # args: should be\
+                    \"var new refName ?value?\""
         }
         # Initialize object array
         set (type) [my Type]
@@ -557,6 +556,7 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     #
     # Arguments:
     # value     New value for object
+    # expr      Math expression to evaluate
     
     method GetValue {} {
         # Handle DNE case
@@ -586,6 +586,7 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     # Syntax:
     # GetObject
     # SetObject $objName
+    # UpdateFields
     #
     # Arguments:
     # objName       Object of same class
@@ -979,7 +980,8 @@ proc ::vutil::new {type refName args} {
             tailcall if [my GetValue] $body1
         } 
         if {[llength $args] != 2 || [lindex $args 0] ne {:}} {
-            ::vutil::WrongNumArgs "[self] ? body1 : body2"
+            return -code error "wrong # args: should be\
+                    \"[self] ? body1 : body2\""
         }
         set body2 [lindex $args 1]
         tailcall if [my GetValue] $body1 else $body2
@@ -1178,14 +1180,14 @@ proc ::vutil::refsub {body} {
 #
 # Arguments:
 # body          Body to evaluate, using $@refs for list references.
-# list          Optional list to iterate with, using "." reference.
 # refName       Reference name to copy to. Default blank to return value.
 
 proc ::vutil::leval {body args} {
     # Interpret input
     set args [lassign [GetRefName {*}$args] refName]
     if {[llength $args]} {
-        WrongNumArgs "leval body ?--> refName?"
+        return -code error "wrong # args: should be\
+                \"leval body ?--> refName?\""
     }
     # Perform @ substitution and get names of substituted variables
     lassign [refsub $body] body subNames
@@ -1232,7 +1234,8 @@ proc ::vutil::leval {body args} {
 proc ::vutil::lexpr {expr args} {
     # Check arity
     if {[llength $args] == 1 || [llength $args] > 2} {
-        WrongNumArgs "lexpr expr ?--> refName?"
+        return -code error "wrong # args: should be\
+                \"lexpr expr ?--> refName?\""
     }
     tailcall leval [list expr $expr] {*}$args
 }
@@ -1260,12 +1263,6 @@ proc ::vutil::GetRefName {args} {
         set args [lrange $args 0 end-2]
     }
     return [list $refName {*}$args]
-}
-
-# WrongNumArgs utility error message
-
-proc ::vutil::WrongNumArgs {syntax} {
-    tailcall return -code error "wrong # args: should be \"$syntax\""
 }
 
 # Finally, provide the package

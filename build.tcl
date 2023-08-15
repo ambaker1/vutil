@@ -1,5 +1,5 @@
 # Define version numbers
-set version 0.14
+set version 1.0
 set tin_version 0.8
 
 # Load required packages for testing
@@ -13,7 +13,6 @@ tin bake src build $config
 tin bake doc/template/version.tin doc/template/version.tex $config
 source build/vutil.tcl
 namespace import vutil::*
-tin import flytrap
 
 # Perform tests
 test local {

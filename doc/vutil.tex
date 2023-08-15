@@ -619,7 +619,7 @@ The type ``\subcmdlink[0]{new}{int}'' validates that the input is a valid intege
 \$refName & Name of reference variable to tie to object. \\
 \$value & Integer value.
 \end{args}
-In addition to the standard math operators, this type also has two short-hand increment/decrement operators, ``\texttt{++}'' and ``\texttt{-{}-}'', which simply increment or decrement the integer object by 1.
+In addition to the standard operators, this type also has two short-hand increment/decrement operators, ``\texttt{++}'' and ``\texttt{-{}-}'', which simply increment or decrement the integer object by 1.
 \begin{syntax}
 \$intObj ++ 
 \end{syntax}
@@ -719,7 +719,7 @@ exists 1 length 4 type list value {hey there world 6}
 \end{example}
 \clearpage
 \subsection{Type ``dict''}
-The type ``\subcmdlink[0]{new}{dict}'' validates that the input is a Tcl dictionary, and provides methods for getting/setting/unsetting dictionary values, checking if values exist, and getting the dictionary size. Additionally, it adds the field ``size'' to the variable info. Self-referencing math operators are disabled for this type.
+The type ``\subcmdlink[0]{new}{dict}'' validates that the input is a Tcl dictionary, and provides methods for getting/setting/unsetting dictionary values, checking if values exist, and getting the dictionary size. Additionally, it adds the field ``size'' to the variable info. 
 \begin{syntax}
 \subcommand{new}{dict} \$refName <\$value>
 \end{syntax}
