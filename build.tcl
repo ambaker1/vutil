@@ -99,13 +99,11 @@ test lock-trace-count {
     llength [trace info variable a]
 } -result {1}
 
-# tie
 test tie1 {
     # Trying to tie to something that is not an object will return an error.
 } -body {
     catch {tie a 5}
 } -result {1}
-unlock a
 
 # tie
 # untie
@@ -120,6 +118,9 @@ test tie2 {
             puts "yummy!"
         }
     }
+    # Cannot tie a locked var.
+    assert [catch {tie a [fruit new]}]; # locked
+    unlock a; # Now you can tie "a"
     tie a [fruit new]
     set b $a; # Save alias
     lappend result [info object isa object $a]; # true

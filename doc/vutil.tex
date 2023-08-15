@@ -140,7 +140,6 @@ failed to modify "a": read-only
 As of Tcl version 8.6, there is no garbage collection for Tcl objects, they have to be removed manually with the ``destroy'' method. 
 The command \cmdlink{tie} is a solution for this problem, using variable traces to destroy the corresponding object when the variable is unset or modified. 
 For example, if an object is tied to a local procedure variable, the object will be destroyed when the procedure returns.
-Tie is separate from lock; a tie will override a lock, and a lock will override a tie. 
 You can tie array elements, but not an entire array.
 
 \begin{syntax}
