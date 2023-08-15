@@ -100,7 +100,7 @@ proc ::vutil::lock {varName args} {
     } elseif {[llength $args] == 1} {
         set value [lindex $args 0]
     } else {
-        WrongNumArgs "lock varName ?value?"
+        return -code error "wrong # args: should be \"lock varName ?value?\""
     }
     # Remove any existing lock trace
     if {[info exists var]} {
@@ -201,7 +201,7 @@ proc ::vutil::tie {refName args} {
     } elseif {[llength $args] == 1} {
         set objName [lindex $args 0]
     } else {
-        WrongNumArgs "tie refName ?objName?"
+        return -code error "wrong # args: should be \"tie refName ?objName?\""
     }
     
     # Verify that input is an object
@@ -508,7 +508,8 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     constructor {refName args} {
         # Check arity
         if {[llength $args] > 1} {
-            WrongNumArgs "var new refName ?value?"
+            return -code error "wrong # args: should be\
+                    \"var new refName ?value?\""
         }
         # Initialize object array
         set (type) [my Type]
@@ -979,7 +980,8 @@ proc ::vutil::new {type refName args} {
             tailcall if [my GetValue] $body1
         } 
         if {[llength $args] != 2 || [lindex $args 0] ne {:}} {
-            ::vutil::WrongNumArgs "[self] ? body1 : body2"
+            return -code error "wrong # args: should be\
+                    \"[self] ? body1 : body2\""
         }
         set body2 [lindex $args 1]
         tailcall if [my GetValue] $body1 else $body2
@@ -1178,14 +1180,14 @@ proc ::vutil::refsub {body} {
 #
 # Arguments:
 # body          Body to evaluate, using $@refs for list references.
-# list          Optional list to iterate with, using "." reference.
 # refName       Reference name to copy to. Default blank to return value.
 
 proc ::vutil::leval {body args} {
     # Interpret input
     set args [lassign [GetRefName {*}$args] refName]
     if {[llength $args]} {
-        WrongNumArgs "leval body ?--> refName?"
+        return -code error "wrong # args: should be\
+                \"leval body ?--> refName?\""
     }
     # Perform @ substitution and get names of substituted variables
     lassign [refsub $body] body subNames
@@ -1232,7 +1234,8 @@ proc ::vutil::leval {body args} {
 proc ::vutil::lexpr {expr args} {
     # Check arity
     if {[llength $args] == 1 || [llength $args] > 2} {
-        WrongNumArgs "lexpr expr ?--> refName?"
+        return -code error "wrong # args: should be\
+                \"lexpr expr ?--> refName?\""
     }
     tailcall leval [list expr $expr] {*}$args
 }
@@ -1262,11 +1265,5 @@ proc ::vutil::GetRefName {args} {
     return [list $refName {*}$args]
 }
 
-# WrongNumArgs utility error message
-
-proc ::vutil::WrongNumArgs {syntax} {
-    tailcall return -code error "wrong # args: should be \"$syntax\""
-}
-
 # Finally, provide the package
-package provide vutil 0.14
+package provide vutil 1.0
