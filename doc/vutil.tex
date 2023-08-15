@@ -140,7 +140,6 @@ failed to modify "a": read-only
 As of Tcl version 8.6, there is no garbage collection for Tcl objects, they have to be removed manually with the ``destroy'' method. 
 The command \cmdlink{tie} is a solution for this problem, using variable traces to destroy the corresponding object when the variable is unset or modified. 
 For example, if an object is tied to a local procedure variable, the object will be destroyed when the procedure returns.
-Tie is separate from lock; a tie will override a lock, and a lock will override a tie. 
 You can tie array elements, but not an entire array.
 
 \begin{syntax}
@@ -183,7 +182,7 @@ Valid reference variables for the \cmdlink{tie} command must match the following
 (::+|\w+)+(\(\w+\))?
 \end{lstlisting}
 The one exception to this rule is the shared global reference ``\textbf{\texttt{\&}}''. 
-This shared reference, regardless of scope, can be accessed with the global command ``\textbf{\texttt{\cmdlink{\$\&}}}''.
+This shared reference, regardless of scope, can be accessed with the command ``\textbf{\texttt{\cmdlink{\$\&}}}''.
 \begin{syntax}
 \command{\$\&} \$arg ...
 \end{syntax}
@@ -193,7 +192,7 @@ This shared reference, regardless of scope, can be accessed with the global comm
 
 Reference variables can also be referred to with the ``\texttt{\$@ref}'' syntax in the context of iterator functions. 
 The engine for this is the command \cmdlink{refsub}, which performs ``\texttt{\$@ref}'' substitution on a given string, returning the updated string and all matched reference names. 
-For example, ``\texttt{\$@ref}'' is converted to ``\texttt{\$\{\$@(ref)\}}''.
+For example, ``\texttt{\$@ref}'' is converted to ``\texttt{\$\{@(ref)\}}''.
 To escape a reference, especially for nested substitution, simply add more ``\texttt{@}'' symbols, like ``\texttt{\$@@ref}''.
 \begin{syntax}
 \command{refsub} \$string
@@ -207,8 +206,8 @@ puts $refs
 \end{lstlisting}
 \tcblower
 \begin{lstlisting}
-${$@(::$&)} + ${$@(x(1))} $@y
-{::$&} x(1)
+${@(::vutil::&)} + ${@(x(1))} $@y
+::vutil::& x(1)
 \end{lstlisting}
 \end{example}
 A simple example of this is provided for the \subcmdlink[0]{new}{list} type, with the commands \cmdlink{leval} and \cmdlink{lexpr}.
@@ -376,6 +375,7 @@ Hello World
 \end{lstlisting}
 \end{example}
 
+
 \clearpage
 \subsection{Direct Assignment Operators}
 In addition to being able to manipulate object variables directly with Tcl commands, variables can also be manipulated with object variable operators.
@@ -389,7 +389,7 @@ The operators ``\texttt{\methodlink[0]{var}{=}}'' and ``\texttt{\methodlink[0]{v
 \end{syntax}
 \begin{args}
 \$value & Value to set object variable to. \\
-\$expr & Math expression to evaluate and set as object value.
+\$expr & Math expression to evaluate and set as object value. 
 \end{args}
 The operator ``\texttt{\methodlink[0]{var}{<-}}'' assigns the value of the object directly from another object variable of the same class, and, like the operator  ``\texttt{\methodlink[0]{var}{=}}'', returns the name of the object.
 \begin{syntax}
@@ -412,39 +412,6 @@ puts [list [$x] [$y] [$z]]
 \tcblower
 \begin{lstlisting}
 0 50 10
-\end{lstlisting}
-\end{example}
-
-\clearpage
-\subsection{Self-Referencing Math Operators}
-The operators ``\texttt{\methodlink[0]{var}{+=}}'', ``\texttt{\methodlink[0]{var}{-=}}'', ``\texttt{\methodlink[0]{var}{*=}}'', and ``\texttt{\methodlink[0]{var}{/=}}'' add, subtract, multiply, and divide the existing value of the object variable with the value given. 
-Like the ``\texttt{\methodlink[0]{var}{=}}'' operator, this also returns the name of the object.
-\begin{syntax}
-\method{var}{+=} \$expr \\
-\method{var}{-=} \$expr \\
-\method{var}{*=} \$expr \\
-\method{var}{/=} \$expr
-\end{syntax}
-\begin{args}
-\$expr & Tcl math expression to evaluate.
-\end{args}
-
-The operator ``\texttt{\methodlink[0]{var}{.}}'' with no arguments simply returns the value of the object. If arguments are provided, it returns the value after passing it through a ``\texttt{::tcl::mathop}'' operator.
-\begin{syntax}
-\method{var}{.} <\$op <\$arg ...>{}>
-\end{syntax}
-\begin{args}
-\$op & Valid ``\texttt{::tcl::mathop}'' operator. \\
-\$arg ... & Input arguments to mathop command.
-\end{args}
-
-\begin{example}{Sum of values}
-\begin{lstlisting}
-puts [[var new x 0] . + 1 2 3 4 5]
-\end{lstlisting}
-\tcblower
-\begin{lstlisting}
-15
 \end{lstlisting}
 \end{example}
 
@@ -631,7 +598,7 @@ proc foo {a b c} {
     new string a $a
     new string b $b
     new bool c $c
-    $c ? {$a} : {$b}
+    $c ? $a : $b
 }
 puts [foo hello world true]; # hello
 puts [foo hello world false]; # world
@@ -693,7 +660,7 @@ proc hmean {x y} {
     new float y $y
     [new float z] := {2*[$x]*[$y]}
     if {[$z] != 0} {
-        $z /= {[$x] + [$y]}
+        $z := {[$z] / ([$x] + [$y])}
     }
     return [$z]
 }

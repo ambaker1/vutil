@@ -1,6 +1,6 @@
 # vutil.tcl
 ################################################################################
-# Utilities for working with variables in Tcl
+# Various utilities for working with variables in Tcl
 
 # Copyright (C) 2023 Alex Baker, ambaker1@mtu.edu
 # All rights reserved. 
@@ -11,6 +11,8 @@
 
 # Define namespace
 namespace eval ::vutil {
+    # Internal variables
+    variable &; # Persistent object variable
     # Object reference name validation regex
     variable refNameExp {(::+|\w+)+(\(\w+\))?}
     # (::+|\w+)+            Matches alphanumeric namespace variables
@@ -19,7 +21,7 @@ namespace eval ::vutil {
     namespace export local; # Access local namespace variables (like global)
     namespace export default; # Set a variable if it does not exist
     namespace export lock unlock; # Hard set a Tcl variable
-    namespace export tie untie; # Tie a Tcl variable to a Tcl object
+    namespace export tie untie $&; # Tie a Tcl variable to a Tcl object
     namespace export link unlink; # Create an object variable
     namespace export var type new; # Object variable class and types
     namespace export refsub; # Substitute object references
@@ -178,11 +180,13 @@ proc ::vutil::LockTrace {value varName index op} {
 # objName       Name of Tcl object
 
 proc ::vutil::tie {refName args} {
-    # Create upvar link to reference variable
-    ValidateRefName $refName
+    # Get proper reference name
     if {$refName eq "&"} {
-        set refName ::$&
-    } 
+        set refName ::vutil::&
+    } else {
+        ValidateRefName $refName
+    }
+    # Create upvar link to reference variable
     upvar 1 $refName refVar
     if {[array exists refVar]} {
         return -code error "cannot tie an array"
@@ -199,20 +203,25 @@ proc ::vutil::tie {refName args} {
     } else {
         WrongNumArgs "tie refName ?objName?"
     }
-    # Verify object
+    
+    # Verify that input is an object
     if {![info object isa object $objName]} {
         return -code error "\"$objName\" is not an object"
     }
-    # Remove any existing lock trace and remove tie traces if not self-tying
-    if {[info exists refVar]} {
-        unlock refVar
-        if {$objName eq $refVar} {
-            untie refVar
-        }
-    }
-    # Set the value of the variable and add TieTrace
+    
+    # Set variable to object (triggers any tie traces)
     set refVar $objName
-    trace add variable refVar {write unset} [list ::vutil::TieTrace $objName]
+    
+    # Verify that assignment worked. If not, variable is locked.
+    if {$refVar ne $objName} {
+        return -code error "cannot tie \"$refVar\": read-only"
+    }
+    
+    # Create variable trace to destroy object upon write or unset of variable.
+    # Also create command trace to prevent renaming of object.
+    trace add variable refVar {write unset} [list ::vutil::TieVarTrace $objName]
+    trace add command $objName rename ::vutil::TieObjTrace
+    
     # Return the value (like with "set")
     return $objName
 }
@@ -222,51 +231,92 @@ proc ::vutil::tie {refName args} {
 # Untie variables from their respective Tcl objects.
 #
 # Syntax:
-# untie $varName ...
+# untie $refName ...
 #
 # Arguments:
-# varName...    Variables to unlock
+# refName...    Variables to unlock
 
 proc ::vutil::untie {args} {
-    foreach varName $args {
-        upvar 1 $varName refVar
+    foreach refName $args {
+        upvar 1 $refName refVar
         if {[array exists refVar]} {
             return -code error "cannot untie an array"
         }
         if {![info exists refVar]} {
-            return -code error "can't untie \"$varName\": no such variable"
+            return -code error "can't untie \"$refName\": no such variable"
         }
-        set objName $refVar
-        trace remove variable refVar {write unset} \
-                [list ::vutil::TieTrace $objName]
+        RemoveTie refVar $refVar
     }
     return
 }
 
-# TieTrace --
+# RemoveTie --
 #
-# Destroys associated Tcl object and removes traces
+# Private command to remove tie traces from a variable
 #
 # Syntax:
-# TieTrace $objName $varName $index $op
+# RemoveTie $refName $objName
+# 
+# Arguments:
+# refName       Variable name to remove traces from
+# objName       Name of object to remove them from
+
+proc ::vutil::RemoveTie {refName objName} {
+    upvar 1 $refName refVar
+    trace remove variable refVar {write unset} \
+                [list ::vutil::TieVarTrace $objName]
+    catch {trace remove command $objName rename ::vutil::TieObjTrace}
+}
+
+# TieVarTrace --
+#
+# Removes traces and destroys associated Tcl object
+#
+# Syntax:
+# TieVarTrace $objName $varName $index $op
 #
 # Arguments:
 # varName       Variable (or array) name
 # index         Index of array if variable is array
 # op            Trace operation (unused)
 
-proc ::vutil::TieTrace {objName varName index op} {
-    catch {$objName destroy}; # try to destroy object
+proc ::vutil::TieVarTrace {objName varName index op} {
     upvar 1 $varName refVar
     if {[info exists refVar]} {
         if {[array exists refVar]} {
-            trace remove variable refVar($index) {write unset} \
-                    [list ::vutil::TieTrace $objName]
+            set refName refVar($index)
         } else {
-            trace remove variable refVar {write unset} \
-                    [list ::vutil::TieTrace $objName]
+            set refName refVar
+        }
+        RemoveTie $refName $objName
+        # Return if setting to self (which just removes the tie)
+        if {[set $refName] eq $objName} {
+            return
         }
     }
+    # Destroy the object if it still exists.
+    if {[info object isa object $objName]} {
+        $objName destroy
+    }
+}
+
+# TieObjTrace --
+#
+# For some reason, the rename trace doesn't work well with TclOO objects.
+# Instead, to ensure proper use, return a fatal error.
+
+proc ::vutil::TieObjTrace {args} {
+    puts stderr "FATAL: cannot rename tied objects"
+    exit 2
+}
+
+# $& --
+#
+# Persistent shared object variable reference.
+
+proc ::vutil::$& {args} {
+    variable &
+    tailcall [set &] {*}$args
 }
 
 # ValidateRefName
@@ -298,23 +348,7 @@ proc ::vutil::ValidateRefName {refName} {
 
 proc ::vutil::IsRefName {refName} {
     variable refNameExp
-    expr {$refName eq "&" || [regexp $refNameExp $refName]}
-}
-
-# $& --
-#
-# Access the global temporary object.
-# The variable "$" syntax does not work with operators such as "&",
-# so this is shorthand to call the last temporary object.
-#
-# Syntax:
-# $& <$arg ...>
-#
-# Arguments:
-# arg ...       Input arguments to temporary object.
-
-proc ::$& {args} {
-    tailcall [set ::$&] {*}$args
+    regexp $refNameExp $refName
 }
 
 # gcoo --
@@ -369,24 +403,19 @@ proc ::vutil::link {objName} {
     if {![info object isa object $objName]} {
         return -code error "\"$objName\" is not an object"
     }
-    # Clear up locks and links if $objName exists
-    if {[info exists $objName]} {
-        unlock $objName
-        untie $objName
-        unlink $objName
-    }
+    # Unlink object
+    unlink $objName
     # Create traces on object variable and command
-    trace add variable $objName read [list ::vutil::ReadLink $objName]
-    trace add variable $objName write [list ::vutil::WriteLink $objName]
-    trace add variable $objName unset [list ::vutil::UnsetLink $objName]
-    trace add command $objName {rename delete} ::vutil::ObjectLink
+    trace add variable $objName {read write unset} \
+            [list ::vutil::LinkVarTrace $objName]
+    trace add command $objName {rename delete} ::vutil::LinkObjTrace
     # Return the name of the object
     return $objName
 }
 
 # unlink --
 #
-# Unlink an object variable
+# Unlink an object
 #
 # Syntax:
 # unlink $objName ...
@@ -396,49 +425,54 @@ proc ::vutil::link {objName} {
 
 proc ::vutil::unlink {args} {
     foreach objName $args {
+        # Must be an object.
         if {![info object isa object $objName]} {
             return -code error "\"$objName\" is not an object"
         }
-        if {![info exists $objName]} {
-            return -code error "can't unlink \"$objName\": no such object"
+        # Remove variable trace if it exists
+        if {[info exists $objName]} {
+            trace remove variable $objName {read write unset} \
+                    [list ::vutil::LinkVarTrace $objName]
         }
-        trace remove variable $objName read [list ::vutil::ReadLink $objName]
-        trace remove variable $objName write [list ::vutil::WriteLink $objName]
-        trace remove variable $objName unset [list ::vutil::UnsetLink $objName]
-        trace remove command $objName {rename delete} ::vutil::ObjectLink
+        # Remove object command traces
+        trace remove command $objName {rename delete} ::vutil::LinkObjTrace
     }
     return
 }
 
-# ReadLink --
-# Set the object variable equal to the object value.
+# LinkVarTrace --
+# Triggered whenever the linked variable is accessed, modified, or deleted.
 
-proc ::vutil::ReadLink {objName args} {
-    set $objName [$objName]
+proc ::vutil::LinkVarTrace {objName name1 name2 op} {
+    switch $op {
+        read { # Set the object variable equal to the object value.
+            set $objName [$objName]
+        }
+        write { # Set the object value equal to the object variable value.
+            $objName = [set $objName]
+        }
+        unset { # Destroy the linked object
+            $objName destroy
+        }
+    }
 }
 
-# WriteLink --
-# Set the object value equal to the object variable value.
-
-proc ::vutil::WriteLink {objName args} {
-    $objName = [set $objName]
-}
-
-# UnsetLink --
-# Destroy the object
-
-proc ::vutil::UnsetLink {objName args} {
-    $objName destroy
-}
-
-# ObjectLink --
+# LinkObjTrace --
 # Unset the object variable (which destroys the variable traces)
+# For some reason, the rename trace doesn't work well with TclOO objects.
+# Instead, to ensure proper use, return a fatal error.
 
-proc ::vutil::ObjectLink {objName newName args} {
-    unset $objName; # Destroys variable and var traces (and command traces)
-    if {$newName ne ""} {
-        # Renaming to newName. Relink.
-        link $newName
+proc ::vutil::LinkObjTrace {oldName newName op} {
+    switch $op {
+        rename { # Reject the rename (breaks the link)
+            puts stderr "FATAL: cannot rename linked objects"
+            exit 2
+        }
+        delete { # Unset the linked variable
+            if {[info exists $oldName]} {
+                unset $oldName
+            }
+        }
     }
 }
 
@@ -460,15 +494,13 @@ proc ::vutil::ObjectLink {objName newName args} {
 # value         Value to assign to the object variable.
 # name          Name of object (for "create" method)
 #
-# Additional object methods:
-# $varObj                       Get object variable value
-# $varObj . <$op <$arg ...>>    Get object variable value, using mathops
-# $varObj print <$arg ...>      Print object variable value
-# $varObj info <$field>         Get object variable info array (or single value)
+# Basic methods:
+# $varObj                       Get value
 # $varObj = $value              Value assignment
 # $varObj := $expr              Expression assignment
-# $varObj (+= -= *= /=) $expr   Self-operation assignment methods
 # $varObj1 <- $varObj2          Object assignment (must be same class)
+# $varObj print <$arg ...>      Print object variable value
+# $varObj info <$field>         Get object variable info array (or single value)
 
 ::oo::class create ::vutil::var {
     superclass ::vutil::gcoo
@@ -478,21 +510,18 @@ proc ::vutil::ObjectLink {objName newName args} {
         if {[llength $args] > 1} {
             WrongNumArgs "var new refName ?value?"
         }
-        # Initialize object
+        # Initialize object array
         set (type) [my Type]
         set (exists) 0
-        # Set up initialization tracer
         trace add variable (value) {read write} [list ::vutil::InitVar [self]]
         # Initialize if value input is provided
         if {[llength $args] == 1} {
             # var new $refName $value
             my = [lindex $args 0]; # Assign value
         }
-        # Set up garbage collection
-        next $refName
-        # Set up object variable link
+        # Initialize object variable and set up garbage collection
         ::vutil::link [self]
-        return
+        next $refName
     }
     
     # Modify <cloned> method for establishing initialization trace and
@@ -504,169 +533,69 @@ proc ::vutil::ObjectLink {objName newName args} {
     }
     
     # Type --
-    #
     # Hard-coded variable type. Overwritten by "type new" or "type create"
-    
     method Type {} {
         return var
     }
-      
-    # print --
-    #
-    # Print value of object (shorthand for puts)
-    #
-    # Syntax:
-    # $varObj print <-nonewline> <$channelID>
-    #
-    # Arguments:
-    # -nonewline        Print without newline
-    # channelID         Channel ID open for writing. Default stdout (Tcl)
     
-    method print {args} {
-        puts {*}$args $(value)
-    }
-
-    # info --
-    #
-    # Get meta data on object
-    # Always has (exists) and (type), and (value) if (exists) is true
-    #
-    # Syntax:
-    # $varObj info <$field>
-    #
-    # Arguments:
-    # field     Optional field. Default "" returns all.
+    # API FOR DEVELOPERS
+    #######################################################################
     
-    method info {{field ""}} {
-        if {$field eq ""} {
-            return [lsort -stride 2 [array get ""]]
-        } elseif {[info exists ($field)]} {
-            return $($field)
-        } else {
-            return -code error "unknown info field \"$field\"" 
-        }
-    }
-    
-    # GetValue (unknown) --
+    # GetValue --
+    # SetValue --
+    # SetExprValue --
+    # ValidateValue --
     #
-    # Object value query (returns value).
-    #
+    # Basic API for retrieving and setting the (value) of the object.
+    # Modify "ValidateValue" to validate input values.
+    # 
     # Syntax:
     # my GetValue
-    # $varObj
+    # my SetValue $value
+    # my SetExprValue $expr
+    # my ValidateValue $value
+    #
+    # Arguments:
+    # value     New value for object
     
     method GetValue {} {
+        # Handle DNE case
+        if {!$(exists)} {
+            return -code error "can't read \"[self]\", no such variable"
+        }
         return $(value)
     }
-    method unknown {args} {
-        if {[llength $args] == 0} {
-            my GetValue
-        } else {
-            next {*}$args
-        }
-    }
-    unexport unknown
-    
-    # GetOpValue (.) --
-    # 
-    # Get the value, run through mathop command
-    # If no operator is given for the "." method, it will call "GetValue"
-    #
-    # Syntax:
-    # my GetOpValue $op <$arg ...>
-    # $varObj . <$op <$arg ...>>
-    # 
-    # Arguments:
-    # op        ::tcl::mathop command
-    # arg...    arguments for operator
-   
-    method GetOpValue {op args} {
-        ::tcl::mathop::$op $(value) {*}$args
-    }
-    method . {args} {
-        if {[llength $args] == 0} {
-            my GetValue
-        } else {
-            my GetOpValue {*}$args
-        }
-    }
-    export .
-    
-    # SetValue (= :=) --
-    #
-    # Value assignment (uses private method "SetValue"). 
-    # Modify "SetValue" to add data validation and add metadata.
-    # Returns object name
-    #
-    # Syntax:
-    # my SetValue $value
-    # $varObj = $value
-    # $varObj := $expr
-    #
-    # Arguments:
-    # varObj    Variable object
-    # value     Value to assign
-    # expr      Value to pass through "expr" function
-    
     method SetValue {value} {
-        set (value) $value
+        set (value) [my ValidateValue $value]
         return [self]
     }
-    method = {args} {
-        my SetValue {*}$args
+    method SetExprValue {expr {level 1}} {
+        my SetValue [uplevel [incr level] [list expr $expr]]
     }
-    method := {expr} {
-        my SetValue [uplevel 1 [list expr $expr]]
+    method ValidateValue {value} {
+        return $value
     }
-    export = := 
     
-    # SetOpValue --
-    # (+= -= *= /=) --
+    # GetObject --
+    # SetObject --
+    # UpdateFields --
     #
-    # Math operation on self.
-    # Modify "SetOpValue" to handle arrays and to bypass data validation.
-    # Returns object name
+    # Get/Set the object array.
+    # Modify UpdateFields to update the info array.
     #
     # Syntax:
-    # $varObj += $expr
-    # $varObj -= $expr
-    # $varObj *= $expr
-    # $varObj /= $expr
+    # GetObject
+    # SetObject $objName
     #
     # Arguments:
-    # varObj    Variable object
-    # expr      Value to pass through "expr" function
+    # objName       Object of same class
     
-    method SetOpValue {op args} {
-        my SetValue [my GetOpValue $op {*}$args]
+    method GetObject {} {
+        if {$(exists)} {
+            my UpdateFields
+        }
+        array get ""
     }
-    method += {expr} {
-        my SetOpValue + [uplevel 1 [list expr $expr]]
-    }
-    method -= {expr} {
-        my SetOpValue - [uplevel 1 [list expr $expr]]
-    }
-    method *= {expr} {
-        my SetOpValue * [uplevel 1 [list expr $expr]]
-    }
-    method /= {expr} {
-        my SetOpValue * [uplevel 1 [list expr $expr]]
-    }
-    export += -= *= /=
-  
-    # SetObject (<-) --
-    # 
-    # Right-to-left direct assignment (must be same class)
-    # Right object must exist.
-    # Returns object name
-    #
-    # Syntax:
-    # my SetObject $varObj
-    # $varObj1 <- $varObj2
-    #
-    # Arguments:
-    # varObj1, varObj2      Variable objects of same class
-
     method SetObject {objName} {
         if {![info object isa object $objName]} {
             return -code error "\"$objName\" is not an object"
@@ -681,14 +610,99 @@ proc ::vutil::ObjectLink {objName newName args} {
         array set "" [$objName info]
         return [self]
     }
-    method <- {objName args} {
-        tailcall my SetObject $objName {*}$args
+    method UpdateFields {} {}
+
+    
+    # PUBLIC METHODS
+    ########################################################################
+      
+    # print --
+    #
+    # Print value of object (shorthand for puts)
+    #
+    # Syntax:
+    # $varObj print <-nonewline> <$channelID>
+    #
+    # Arguments:
+    # -nonewline        Print without newline
+    # channelID         Channel ID open for writing. Default stdout (Tcl)
+    
+    method print {args} {
+        puts {*}$args [my GetValue]
+    }
+
+    # info --
+    # (<-) --
+    #
+    # Get/set meta data on object
+    # Always has (type), and (value) if exists
+    #
+    # Syntax:
+    # $varObj info <$field>
+    # $varObj <- $objName
+    #
+    # Arguments:
+    # field         Optional field. Default "" returns all.
+    # objName       Variable object of same class
+    
+    method info {{field ""}} {
+        set info [my GetObject]; # updates all fields
+        if {$field eq ""} {
+            return [lsort -stride 2 $info]
+        } elseif {[info exists ($field)]} {
+            return $($field)
+        } else {
+            return -code error "unknown info field \"$field\"" 
+        }
+    }
+    method <- {objName} {
+        my SetObject $objName
     }
     export <-
+    
+    # (unknown) --
+    #
+    # Object value query operators (returns value).
+    #
+    # Syntax:
+    # $varObj; # Returns value
+    
+    method unknown {args} {
+        if {[llength $args] == 0} {
+            my GetValue
+        } else {
+            next {*}$args
+        }
+    }
+    unexport unknown
+    
+    # (= :=) --
+    #
+    # Value assignment operators.
+    # Returns object name
+    #
+    # Syntax:
+    # $varObj = $value
+    # $varObj := $expr
+    #
+    # Arguments:
+    # varObj        Variable object
+    # value         Value to assign
+    # arg args...   Value to pass through "expr" function
+    
+    method = {value} {
+        my SetValue $value
+    }
+    method := {expr} {
+        my SetExprValue $expr
+    }
+    export = :=
 }
 
 # InitVar --
-# Tracer to handle access error messages for initialization of object variables
+#
+# Initialization trace for object variables
+# Ensures that "info exists $var" and "$var info exists" are equivalent.
 
 proc ::vutil::InitVar {objName arrayName args} {
     upvar 1 $arrayName ""
@@ -696,21 +710,18 @@ proc ::vutil::InitVar {objName arrayName args} {
     if {![info exists (value)]} {
         return -code error "can't read \"$objName\", no such variable"
     }
-    # If object value is initialized, but objvar is not, initialize objvar
+    # Remove variable trace
+    trace remove variable (value) {read write} [list ::vutil::InitVar $objName]
+    # Configure so that info exists 
     if {![info exists $objName]} {
         set $objName $(value)
     }
-    # Remove variable traces and set "exists" array field
-    trace remove variable (value) {read write} [list ::vutil::InitVar $objName]
     set (exists) 1
     return
 }
 
 # Unexport the "create" class for "::vutil::var"
 oo::objdefine ::vutil::var unexport create
-
-# Initialize the $& global temp object
-::vutil::var new &
 
 # OBJECT VARIABLE TYPE FRAMEWORK
 ################################################################################
@@ -930,6 +941,28 @@ proc ::vutil::new {type refName args} {
 # set x [new float {} 5]
 # puts $x; # 5.0
 
+# new string --
+#
+# Everything is a string. This type adds the "length" and "@" methods.
+# 
+# Additional methods:
+# length:   string length
+# @:        string index
+
+::vutil::type new string {
+    method UpdateFields {} {
+        set (length) [my length]
+        next
+    }
+    method length {} {
+        string length [my GetValue]
+    }
+    method @ {i} {
+        string index [my GetValue] $i
+    }
+    export @
+}
+
 # new bool --
 #
 # Asserts boolean. Also has new if-statement control structure
@@ -938,46 +971,46 @@ proc ::vutil::new {type refName args} {
 # ?         Shorthand if-statement (tailcalls "if")
 
 ::vutil::type new bool {
-    method SetValue {value} {
-        next [::tcl::mathfunc::bool $value]
+    method ValidateValue {value} {
+        ::tcl::mathfunc::bool $value
     }
     method ? {body1 args} {
         if {[llength $args] == 0} {
-            tailcall if $(value) $body1
+            tailcall if [my GetValue] $body1
         } 
         if {[llength $args] != 2 || [lindex $args 0] ne {:}} {
             ::vutil::WrongNumArgs "[self] ? body1 : body2"
         }
         set body2 [lindex $args 1]
-        tailcall if $(value) $body1 else $body2
+        tailcall if [my GetValue] $body1 else $body2
     }
     export ?
 }
 
 # new float --
 #
-# Double-precision floating point value.
+# Numeric subtype. Forces double-precision floating point value.
 
 ::vutil::type new float {
-    method SetValue {value} {
-        next [::tcl::mathfunc::double $value]
+    method ValidateValue {value} {
+        ::tcl::mathfunc::double $value
     }
 }
 
 # new int --
 #
-# Asserts integer. Also has increment/decrement operators
+# Numeric subtype. Asserts integer. Also has increment/decrement operators
 #
 # Additional methods:
 # ++        Increment by 1
 # --        Decrement by 1
 
 ::vutil::type new int {
-    method SetValue {value} {
+    method ValidateValue {value} {
         if {![string is integer -strict $value]} {
             return -code error "expected integer value but got \"$value\""
         }
-        next $value
+        return $value
     }
     method ++ {} {
         incr (value)
@@ -990,28 +1023,6 @@ proc ::vutil::new {type refName args} {
     export ++ --
 }
 
-# new string --
-#
-# Everything is a string. This type adds the "length" and "@" methods.
-# 
-# Additional methods:
-# length:   string length
-# @:        string index
-
-::vutil::type new string {
-    method info {args} {
-        set (length) [my length]
-        next {*}$args
-    }
-    method length {} {
-        string length $(value)
-    }
-    method @ {i} {
-        string index $(value) $i
-    }
-    export @
-}
-
 # new list --
 #
 # Almost everything is a list. Asserts that input is a list.
@@ -1022,39 +1033,34 @@ proc ::vutil::new {type refName args} {
 # @         list index/set (lindex/lset)
 
 ::vutil::type new list {
-    method SetValue {value} {
+    # Modify API for lists
+    method ValidateValue {value} {
         if {[catch {llength $value} result]} {
             return -code error $result
         }
-        next $value
+        return $value
     }
-    method info {args} {
+    method UpdateFields {} {
         set (length) [my length]
-        next {*}$args
+        next
     }
+    method SetExprValue {expr {level 1}} {
+        my SetValue [uplevel [incr level] [list ::vutil::lexpr $expr]]
+    }
+    
+    # Add method for length
     method length {} {
-        llength $(value)
-    }
-    
-    # List expression
-    method := {expr} {
-        set (value) [uplevel 1 [list ::vutil::lexpr $expr]]
-    }
-    export :=
-    
-    # GetOpValue, Modified for lists
-    method GetOpValue {op args} {
-        lmap value $(value) {::tcl::mathop::$op $value {*}$args}
+        llength [my GetValue]
     }
     
     # @ --
     #
-    # Method to get or set a value in a list
+    # Method to get or set a value in a list.
     #
     # Syntax:
+    # $list @ ?$i ...?
     # $list @ $i ?$i ...? = $value
     # $list @ $i ?$i ...? := $expr
-    # $list @ ?$i ...?
     
     method @ {args} {
         switch [lindex $args end-1] {
@@ -1065,11 +1071,12 @@ proc ::vutil::new {type refName args} {
                 set value [uplevel 1 [list expr [lindex $args end]]]
             }
             default { # $list @ ?$i ...?
-                return [lindex $(value) {*}$args]
+                return [lindex [my GetValue] {*}$args]
             }
         }
+        set indices [lrange $args 0 end-2]
         # Assign and return self
-        lset (value) {*}[lrange $args 0 end-2] $value
+        lset (value) {*}$indices $value
         return [self]
     }
     export @
@@ -1087,23 +1094,23 @@ proc ::vutil::new {type refName args} {
 # exists    dict exists
 
 ::vutil::type new dict {
-    method SetValue {value} {
+    method ValidateValue {value} {
         if {[catch {dict size $value} result]} {
             return -code error $result
         }
-        next $value
+        return $value
+    }
+    method UpdateFields {} {
+        set (size) [my size]
+        next
     }
     method print {args} {
-        dict for {key value} $(value) {
+        dict for {key value} [my GetValue] {
             puts {*}$args [list $key $value]
         }
     }
-    method info {args} {
-        set (size) [my size]
-        next {*}$args
-    }
     method size {} {
-        dict size $(value)
+        dict size [my GetValue]
     }
     method set {key args} {
         dict set (value) $key {*}$args
@@ -1114,13 +1121,11 @@ proc ::vutil::new {type refName args} {
         return [self]
     }
     method exists {key args} {
-        dict exists $(value) $key {*}$args
+        dict exists [my GetValue] $key {*}$args
     }
     method get {args} {
-        dict get $(value) {*}$args
+        dict get [my GetValue] {*}$args
     }
-    # Unexport the math assignment operators (will not work)
-    unexport += -= *= /=
 }
 
 # OBJECT ORIENTED EVALUATION
@@ -1130,11 +1135,11 @@ proc ::vutil::new {type refName args} {
 #
 # Reference objects with the $@ symbol, like the $ symbol for variables.
 # Returns the substituted body, and the list of reference names used.
-# To refer to the global shared object, use $@&.
+# To refer to the reference object, use "$@&"
 #
-# To escape an object reference, use more @ symbols (such as $@@x)
+# To escape an object reference, use additional @'s. (such as $@@x)
 # Examples:
-# $@x: Refers to object value, replaced with ${$@(x)}
+# $@x: Refers to object value, replaced with ${@(x)}
 # $@@x: Escaped $@x
 # $@@@x: Escaped $@@x (etc.)
 #
@@ -1146,10 +1151,10 @@ proc ::vutil::new {type refName args} {
 
 proc ::vutil::refsub {body} {
     variable refNameExp; # Regular expression for matching object variables
-    # Initialize refMap with any & references
+    # Initialize refMap with any & and . references
     set refMap ""
-    if {[regsub -all {\$@&} $body {${$@(::$\&)}} body]} {
-        dict set refMap ::$& ""
+    if {[regsub -all {\$@&} $body {${@(::vutil::\&)}} body]} {
+        dict set refMap ::vutil::& ""
     }
     # Get all other references
     set refExp "\\\$@($refNameExp)"; # e.g. $@x(1)
@@ -1157,7 +1162,7 @@ proc ::vutil::refsub {body} {
         dict set refMap [string range $match 2 end] ""
     }
     # Perform regsub
-    set body [regsub -all $refExp $body {${$@(\1)}}]
+    set body [regsub -all $refExp $body {${@(\1)}}]
     # Handle recursion for escaped object references
     set body [string map {$@@ $@} $body]
     # Return updated body and list of substituted references
@@ -1172,23 +1177,23 @@ proc ::vutil::refsub {body} {
 # leval $body <"-->" refName>
 #
 # Arguments:
-# body          Body to evaluate
-# refName       Reference name to copy to. Default blank for value.
+# body          Body to evaluate, using $@refs for list references.
+# list          Optional list to iterate with, using "." reference.
+# refName       Reference name to copy to. Default blank to return value.
 
 proc ::vutil::leval {body args} {
     # Interpret input
-    set refName [GetRefName]
+    set args [lassign [GetRefName {*}$args] refName]
     if {[llength $args]} {
         WrongNumArgs "leval body ?--> refName?"
     }
-    # Perform substitution and get names of substituted variables
+    # Perform @ substitution and get names of substituted variables
     lassign [refsub $body] body subNames
-    if {[llength $subNames] == 0} {
-        return -code error "no list reference found"
-    }
     # Get variable mapping
     set varMap ""
+    set length -1
     foreach subName $subNames {
+        # Validate user input
         upvar 1 $subName subVar
         if {![info exists subVar]} {
             return -code error "\"$subName\" does not exist"
@@ -1197,16 +1202,20 @@ proc ::vutil::leval {body args} {
             return -code error "\"$subName\" is an array"
         }
         type assert list $subVar
-        lappend varMap $@($subName) [$subVar]
+        # Validate list lengths
+        if {$length == -1} {
+            set length [$subVar length]
+        } elseif {[$subVar length] != $length} {
+            return -code error "incompatible list lengths"
+        }
+        lappend varMap @($subName) [$subVar]
     }
-    # Perform lmap, and then unset the reference array
-    set result [uplevel 1 [list lmap {*}$varMap $body]]
-    upvar 1 $@ $@
-    foreach subName $subNames {
-        array unset $@ $subName
+    # Handle case with no list references (normal eval)
+    if {$length == -1} {
+        tailcall new list $refName [uplevel 1 $body]
     }
-    # Return a list
-    tailcall new list $refName $result
+    # Iterate
+    tailcall new list $refName [uplevel 1 [list lmap {*}$varMap $body]]
 }
 
 # lexpr --
@@ -1218,47 +1227,45 @@ proc ::vutil::leval {body args} {
 #
 # Arguments:
 # expr          Expression, using $@refs for list references
+# refName       Reference name to copy to. Default blank to return value
 
 proc ::vutil::lexpr {expr args} {
-    # Interpret input
-    set refName [GetRefName]
-    if {[llength $args]} {
+    # Check arity
+    if {[llength $args] == 1 || [llength $args] > 2} {
         WrongNumArgs "lexpr expr ?--> refName?"
     }
-    tailcall leval [list expr $expr] --> $refName
+    tailcall leval [list expr $expr] {*}$args
 }
 
 # GetRefName --
 #
-# Trims args of ?--> refName?. 
-# Returns refName (blank if none).
+# Trims tail of args ( ?--> refName? ). 
+# Returns refName (blank if none), and args
 #
 # Syntax:
-# set refName [GetRefName]
+# set args [lassign [GetRefName {*}$args] refName]
 #
 # Arguments:
 # args:         Input arguments
-# refName       Reference name
 
-proc ::vutil::GetRefName {} {
-    upvar 1 args args
+proc ::vutil::GetRefName {args} {
     set refName ""; # Default
     if {[lindex $args end-1] eq "-->"} {
         # Get and validate reference name
         set refName [lindex $args end]
-        if {$refName ne ""} {
+        if {$refName ni {{} &}} {
             ValidateRefName $refName
         }
         # Trim args
         set args [lrange $args 0 end-2]
     }
-    return $refName
+    return [list $refName {*}$args]
 }
 
 # WrongNumArgs utility error message
 
 proc ::vutil::WrongNumArgs {syntax} {
-    tailcall return -code error "wrong # args: should be \"$message\""
+    tailcall return -code error "wrong # args: should be \"$syntax\""
 }
 
 # Finally, provide the package

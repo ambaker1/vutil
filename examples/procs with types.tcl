@@ -6,7 +6,7 @@ proc foo {a b c} {
     new string a $a
     new string b $b
     new bool c $c
-    $c ? {$a} : {$b}
+    $c ? $a : $b
 }
 puts [foo hello world true]; # hello
 puts [foo hello world false]; # world
@@ -25,7 +25,7 @@ proc hmean {x y} {
     new float y $y
     [new float z] := {2*[$x]*[$y]}
     if {[$z] != 0} {
-        $z /= {[$x] + [$y]}
+        $z := {[$z] / ([$x] + [$y])}
     }
     return [$z]
 }
@@ -37,7 +37,7 @@ puts [hmean 1 2]; # 1.3333
 for {new int i 0} {[$i] < [$x length]} {$i ++} {
     new float element [$x @ [$i]]
     $x @ [$i] = $element
-    [$x @ [$i]] += 10; # Still updates element
+    [$x @ [$i]] := {[$element] + 10}; # Still updates element
     $x @ [$i] = [$element]; # Assigns value
 }
 puts [$x]; # 11.0 12.0 13.0
