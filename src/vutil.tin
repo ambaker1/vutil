@@ -1,6 +1,6 @@
 # vutil.tcl
 ################################################################################
-# Utilities for working with variables in Tcl
+# Various utilities for working with variables in Tcl
 
 # Copyright (C) 2023 Alex Baker, ambaker1@mtu.edu
 # All rights reserved. 
@@ -11,6 +11,8 @@
 
 # Define namespace
 namespace eval ::vutil {
+    # Internal variables
+    variable &; # Persistent object variable
     # Object reference name validation regex
     variable refNameExp {(::+|\w+)+(\(\w+\))?}
     # (::+|\w+)+            Matches alphanumeric namespace variables
@@ -308,8 +310,9 @@ proc ::vutil::TieObjTrace {args} {
     exit 2
 }
 
-# Global reference variable $&
-# Refers to the persistent tied object
+# $& --
+#
+# Persistent shared object variable reference.
 
 proc ::vutil::$& {args} {
     variable &
@@ -492,19 +495,12 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
 # name          Name of object (for "create" method)
 #
 # Basic methods:
-# $varObj                       Value query
+# $varObj                       Get value
 # $varObj = $value              Value assignment
+# $varObj := $expr              Expression assignment
+# $varObj1 <- $varObj2          Object assignment (must be same class)
 # $varObj print <$arg ...>      Print object variable value
 # $varObj info <$field>         Get object variable info array (or single value)
-# $varObj1 <- $varObj2          Object assignment (must be same class)
-#
-# Additional object methods:
-# $varObj | $body               Command evaluation
-# $varObj : $body               Expression evaluation
-# $varObj . $body               Operation evaluation 
-# $varObj |= $body              Command assignment
-# $varObj := $expr              Expression assignment
-# $varObj .= $ops               Operation assignment
 
 ::oo::class create ::vutil::var {
     superclass ::vutil::gcoo
@@ -547,6 +543,7 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     
     # GetValue --
     # SetValue --
+    # SetExprValue --
     # ValidateValue --
     #
     # Basic API for retrieving and setting the (value) of the object.
@@ -555,6 +552,7 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     # Syntax:
     # my GetValue
     # my SetValue $value
+    # my SetExprValue $expr
     # my ValidateValue $value
     #
     # Arguments:
@@ -570,6 +568,9 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     method SetValue {value} {
         set (value) [my ValidateValue $value]
         return [self]
+    }
+    method SetExprValue {expr {level 1}} {
+        my SetValue [uplevel [incr level] [list expr $expr]]
     }
     method ValidateValue {value} {
         return $value
@@ -611,59 +612,6 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     }
     method UpdateFields {} {}
     
-    # GetOpValue --
-    # SetOpValue --
-    # 
-    # Get/Set the value, run through mathop command
-    #
-    # Syntax:
-    # my GetOpValue $op <$arg ...>
-    # my SetOpValue $op <$arg ...>
-    # 
-    # Arguments:
-    # op        ::tcl::mathop command
-    # arg...    arguments for operator
-    
-    method GetOpValue {op args} {
-        ::tcl::mathop::$op [my GetValue] {*}$args
-    }
-    method SetOpValue {op args} {
-        my SetValue [my GetOpValue $op {*}$args]
-    }
-    
-    # GetEvalValue --
-    # SetEvalValue --
-    #
-    # Get/Set the value, run through uplevel
-    # $@ref refers to object variable value.
-    #
-    # Arguments:
-    # body      Body to evaluate.
-    # level     Uplevel amount. Default 1.
-    
-    method GetEvalValue {body {level 1}} {
-        uplevel [incr level] $body
-    }
-    method SetEvalValue {body {level 1}} {
-        my SetValue [my GetEvalValue $body [incr level]]
-    }
-
-    
-    # GetExprValue --
-    # SetExprValue --
-    #
-    # Get/Set the value, run through uplevel.
-    #
-    # Arguments:
-    # expr      Math expression to evaluate.
-    # level     Uplevel amount. Default 1.
-    
-    method GetExprValue {expr {level 1}} {
-        my GetEvalValue [list expr $expr] [incr level]
-    }
-    method SetExprValue {expr {level 1}} {
-        my SetValue [my GetExprValue $expr [incr level]]
-    }
     
     # PUBLIC METHODS (DO NOT MODIFY)
     ########################################################################
@@ -712,20 +660,12 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     }
     export <-
     
-    # (unknown | : .) --
+    # (unknown) --
     #
     # Object value query operators (returns value).
     #
     # Syntax:
     # $varObj; # Returns value
-    # $varObj | $body; # Evaluate commands
-    # $varObj : $expr; # Evaluate expression
-    # $varObj . $op $args; # Run value through Tcl mathop.
-    #
-    # Arguments:
-    # body      Command or script to evaluate
-    # expr      Math expression to evaluate
-    # op args   List with Tcl math operator and input args.
     
     method unknown {args} {
         if {[llength $args] == 0} {
@@ -734,49 +674,29 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
             next {*}$args
         }
     }
-    method | {body} {
-        my GetEvalValue $body
-    }
-    method : {expr} {
-        my GetExprValue $expr
-    }
-    method . {op args} {
-        my GetOpValue $op {*}$args
-    }
     unexport unknown
-    export | : .
     
-    # (= |= := .=) --
+    # (= :=) --
     #
     # Value assignment operators.
     # Returns object name
     #
     # Syntax:
     # $varObj = $value
-    # $varObj |= $body
     # $varObj := $expr
-    # $varObj .= $op $arg ...
     #
     # Arguments:
     # varObj        Variable object
     # value         Value to assign
-    # body          Command or script to evaluate.
-    # expr          Value to pass through "expr" function
-    # op arg ...    Tcl mathop arguments (self-value inserted)
+    # arg args...   Value to pass through "expr" function
     
     method = {value} {
         my SetValue $value
     }
-    method |= {body} {
-        my SetEvalValue $body
-    }
     method := {expr} {
         my SetExprValue $expr
     }
-    method .= {op args} {
-        my SetOpValue $op {*}$args
-    }
-    export = |= := .=
+    export = :=
 }
 
 # InitVar --
@@ -1052,7 +972,7 @@ proc ::vutil::new {type refName args} {
 
 ::vutil::type new bool {
     method ValidateValue {value} {
-        next [::tcl::mathfunc::bool $value]
+        ::tcl::mathfunc::bool $value
     }
     method ? {body1 args} {
         if {[llength $args] == 0} {
@@ -1073,7 +993,7 @@ proc ::vutil::new {type refName args} {
 
 ::vutil::type new float {
     method ValidateValue {value} {
-        next [::tcl::mathfunc::double $value]
+        ::tcl::mathfunc::double $value
     }
 }
 
@@ -1090,7 +1010,7 @@ proc ::vutil::new {type refName args} {
         if {![string is integer -strict $value]} {
             return -code error "expected integer value but got \"$value\""
         }
-        next $value
+        return $value
     }
     method ++ {} {
         incr (value)
@@ -1118,17 +1038,14 @@ proc ::vutil::new {type refName args} {
         if {[catch {llength $value} result]} {
             return -code error $result
         }
-        next $value
+        return $value
     }
     method UpdateFields {} {
         set (length) [my length]
         next
     }
-    method GetEvalValue {body {level 1}} {
-        uplevel [incr level] [list ::vutil::leval $body]
-    }
-    method GetOpValue {op args} {
-        lmap value [my GetValue] {::tcl::mathop::$op $value {*}$args}
+    method SetExprValue {expr {level 1}} {
+        my SetValue [uplevel [incr level] [list ::vutil::lexpr $expr]]
     }
     
     # Add method for length
@@ -1143,29 +1060,23 @@ proc ::vutil::new {type refName args} {
     # Syntax:
     # $list @ ?$i ...?
     # $list @ $i ?$i ...? = $value
-    # $list @ $i ?$i ...? |= $body
     # $list @ $i ?$i ...? := $expr
-    # $list @ $i ?$i ...? .= $ops
     
     method @ {args} {
-        # Switch for input type
-        if {[lindex $args end-1] eq "="} {
-            # $list @ $i ?$i ...? = $value
-            set value [lindex $args end]
-        } elseif {[lindex $args end-1] in {|= := .=}} {
-            # $list @ $i ?$i ...? $op $input
-            set indices [lrange $args 0 end-2]
-            set op [lindex $args end-1]
-            set input [lindex $args end]
-            ::vutil::new var temp [list [lindex [my GetValue] {*}$indices]]
-            uplevel 1 [list $temp $op $input]
-            set value [lindex [$temp] 0]
-        } else {
-            # $list @ ?$i ...?
-            return [lindex [my GetValue] {*}$args]
+        switch [lindex $args end-1] {
+            = { # $list @ $i ?$i ...? = $value
+                set value [lindex $args end]
+            }
+            := { # $list @ $i ?$i ...? := $expr
+                set value [uplevel 1 [list expr [lindex $args end]]]
+            }
+            default { # $list @ ?$i ...?
+                return [lindex [my GetValue] {*}$args]
+            }
         }
+        set indices [lrange $args 0 end-2]
         # Assign and return self
-        lset (value) {*}[lrange $args 0 end-2] $value
+        lset (value) {*}$indices $value
         return [self]
     }
     export @
@@ -1187,16 +1098,16 @@ proc ::vutil::new {type refName args} {
         if {[catch {dict size $value} result]} {
             return -code error $result
         }
-        next $value
+        return $value
+    }
+    method UpdateFields {} {
+        set (size) [my size]
+        next
     }
     method print {args} {
         dict for {key value} [my GetValue] {
             puts {*}$args [list $key $value]
         }
-    }
-    method info {args} {
-        set (size) [my size]
-        next {*}$args
     }
     method size {} {
         dict size [my GetValue]
@@ -1215,8 +1126,6 @@ proc ::vutil::new {type refName args} {
     method get {args} {
         dict get [my GetValue] {*}$args
     }
-    # Unexport the math assignment operators (will not work)
-    unexport += -= *= /=
 }
 
 # OBJECT ORIENTED EVALUATION
