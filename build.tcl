@@ -1,5 +1,5 @@
 # Define version numbers
-set version 0.13
+set version 0.14
 set tin_version 0.8
 
 # Load required packages for testing
@@ -13,6 +13,7 @@ tin bake src build $config
 tin bake doc/template/version.tin doc/template/version.tex $config
 source build/vutil.tcl
 namespace import vutil::*
+tin import flytrap
 
 # Perform tests
 test local {
@@ -104,9 +105,11 @@ test tie1 {
 } -body {
     catch {tie a 5}
 } -result {1}
+unlock a
 
 # tie
 # untie
+
 test tie2 {
     # Verify that you can tie and untie TclOO objects to variables
 } -body {
@@ -182,26 +185,27 @@ test obj_new {
 } -result {foo}
 
 test obj_ref {
-    # Verify that the "&" refName returns "::$&"
+    # Verify that the "&" refName returns "::vutil::&"
 } -body {
     set temp [$a --> &]
-    assert $temp eq ${::$&}
+    assert $temp eq ${::vutil::&}
 } -result {}
 
 test obj_ref_new {
-    # Verify that the "&" refName returns "::$&"
+    # Verify that the "&" refName returns "::vutil::&"
 } -body {
     var new & {hello world}
     $&
 } -result {hello world}
 
 test obj_ref_copy {
-    # Verify that the "&" refName returns "::$&"
+    # Verify that the "&" refName returns "::vutil::&"
 } -body {
     var new x {1 2 3}
     $x --> &
-    ${$&}
+    ${::vutil::&}
 } -result {1 2 3}
+
 
 test obj_gc {
     # Ensure that objects are deleted inside procedures (garbage collection)
@@ -330,9 +334,9 @@ test new_float {
     $x := {2 + 2}
     assert {[$x] == 4}
     [new float a] := {[$x] - 2}; # Assures that it is being evaluated at uplevel.
-    [new float b] <- [$a *= 2]
+    [new float b] <- [$a := {[$a] * 2}]
     assert {[$b] == 4}
-    [$x *= {[$a] + 1}] --> c
+    [$x := {[$x] * ([$a] + 1)}] --> c
     $c info
 } -result {exists 1 type float value 20.0}
 
@@ -344,7 +348,7 @@ test new_int {
         lappend values [$i]
     }
     lappend values [$i]
-    lappend values [[$i += {[$i] / 2}]]
+    lappend values [[$i := {[$i] + [$i] / 2}]]
 } -result {0 1 2 3 4 5 6 7 8 9 10 15}
 
 test var_ops {
@@ -563,9 +567,9 @@ test refsub {
     new list ::z(hi_there) {a b c}
     new list & {10 20 30}
     lassign [refsub {$@x $@xy(1) $@::z(hi_there) $@& $@@foo}] body refNames
-    assert {$refNames eq {{::$&} x xy(1) ::z(hi_there)}}; # $@& first
-    assert {$body eq {${$@(x)} ${$@(xy(1))} ${$@(::z(hi_there))} ${$@(::$&)} $@foo}}
-} -result {}
+    assert {$refNames eq {::vutil::& x xy(1) ::z(hi_there)}}; # $@& first
+    set body
+} -result {${@(x)} ${@(xy(1))} ${@(::z(hi_there))} ${@(::vutil::&)} $@foo}
 
 test leval {
     # Check that the list evaluation method works
@@ -678,23 +682,13 @@ test crossprod {
         $c @ 0 := {[$a @ 1]*[$b @ 2] - [$a @ 2]*[$b @ 1]}
         $c @ 1 := {[$a @ 2]*[$b @ 0] - [$a @ 0]*[$b @ 2]}
         $c @ 2 := {[$a @ 0]*[$b @ 1] - [$a @ 1]*[$b @ 0]}
-        return [$c .]
+        return [$c]
     }
     crossprod {3 -3 1} {4 9 2}
 } -result {-15 -2 39}
 
-test sum {
-    # Sum of values
-} -body {
-    proc sum {args} {
-        new var x 0
-        $x . + {*}$args
-    }
-    sum 20 10 12 2.0 1
-} -result {45.0}
-
 test add_lists {
-
+    # Create prodecure to add lists together
 } -body {
     proc add {a b} {
         type assert list $a
@@ -719,12 +713,9 @@ if {$nFailed > 0} {
 
 # Tests passed, copy build files to main folder and install
 file copy -force {*}[glob -directory build *] [pwd]
-
 exec tclsh install.tcl
 
 # Verify installation
 tin forget vutil
 tin clear
 tin import vutil -exact $version
-
-
