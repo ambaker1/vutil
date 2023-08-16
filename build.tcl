@@ -1,6 +1,6 @@
 # Define version numbers
-set version 1.0
-set tin_version 0.8
+set version 1.1
+set tin_version 1.0
 
 # Load required packages for testing
 package require tin $tin_version
@@ -13,6 +13,8 @@ tin bake src build $config
 tin bake doc/template/version.tin doc/template/version.tex $config
 source build/vutil.tcl
 namespace import vutil::*
+
+tin import flytrap
 
 # Perform tests
 test local {
@@ -405,7 +407,7 @@ test type_names {
     # Verify the names of the types
 } -body {
     lsort [type names]
-} -result {bool dict float int list string var}
+} -result {bool dict float int list numeric string var}
 
 test type_exists {
     # Verify that "exists" works
@@ -558,7 +560,7 @@ test gcoo_superclass3 {
     llength [info class instances count]
 } -result {2}
 
-test refsub {
+test RefSub {
     # Make sure that the reference substitution works
 } -body {
     unset x y z
@@ -566,7 +568,7 @@ test refsub {
     new list xy(1) {2 3 4}
     new list ::z(hi_there) {a b c}
     new list & {10 20 30}
-    lassign [refsub {$@x $@xy(1) $@::z(hi_there) $@& $@@foo}] body refNames
+    lassign [::vutil::RefSub {$@x $@xy(1) $@::z(hi_there) $@& $@@foo}] body refNames
     assert {$refNames eq {::vutil::& x xy(1) ::z(hi_there)}}; # $@& first
     set body
 } -result {${@(x)} ${@(xy(1))} ${@(::z(hi_there))} ${@(::vutil::&)} $@foo}
@@ -687,6 +689,15 @@ test crossprod {
     crossprod {3 -3 1} {4 9 2}
 } -result {-15 -2 39}
 
+test list_eval {
+    # Ensure that eval operator is working for lists
+} -body {
+    new list x {a b c}
+    $x ::= {string toupper $@0}
+    $x @ 0 ::= {string tolower [$0]}
+    $x
+} -result {a B C}
+
 test add_lists {
     # Create prodecure to add lists together
 } -body {
@@ -699,6 +710,58 @@ test add_lists {
     new list B {2.0 2.0 4.0}
     add $A $B
 } -result {3.0 4.0 7.0}
+
+test SelfRef {
+    # Ensure that self-referencing works
+} -body {
+    new float x 5
+    $x := {[$0] + 5}
+    $x
+} -result {10.0}
+
+test SelfRefNested {
+    # Ensure that $0 can be nested
+} -body {
+new float y 6
+$y := {[$0] + [[$x := {[$0] + 5}]] + [$0]}; # 6.0 + 15.0 + 6.0
+$y
+} -result {27.0}
+
+test lop {
+    # Test out lop features
+} -body {
+    assert [lop {1 2 3} + 1] eq {2 3 4}
+    assert [lop {1 0 1} !] eq {0 1 0}
+    assert [lop 0 + {*}{1 2 3 4}] eq 10
+    new list x {1 2 3}
+    [$x .= {+ 1}]
+} -result {2 3 4}
+
+test lexpr_self {
+    # Verify that lexpr works with self-referencing
+} -body {
+    [$x := {$@0 + 5}]
+} -result {7 8 9}
+
+test leval_self {
+    # Verify that leval works
+} -body {
+    [$x ::= {string cat A $@0}]
+} -result {A7 A8 A9}
+
+test numeric_ops {
+    # Test out numeric operators
+} -body {
+    new float z 5
+    assert [[$z += 10]] == 15.0
+    assert [[$z -= 12]] == 3.0
+    assert [[$z *= 2]] == 6.0
+    assert [[$z /= 3]] == 2.0
+    assert [[$z **= 3]] == 8.0
+    [$z *= {[$0]}]
+} -result {64.0}
+
+pause
 
 # Check number of failed tests
 set nFailed $::tcltest::numTests(Failed)
