@@ -14,6 +14,8 @@ namespace eval ::vutil {
     # Internal variables
     variable $& ""; # Persistent object variable
     variable $. ""; # Self-reference object variable
+    variable $@; # Reference array variable
+    array unset $@
     # Object reference name validation regex
     variable refNameExp {(::+|\w+)+(\(\w+\))?}
     # (::+|\w+)+            Matches alphanumeric namespace variables
@@ -1329,10 +1331,10 @@ proc ::vutil::RefSub {body} {
     variable refNameExp; # Regular expression for matching object variables
     # Initialize refMap with any & references
     set refMap ""
-    if {[regsub -all {\$@&} $body {${@(::vutil::$\&)}} body]} {
+    if {[regsub -all {\$@&} $body {${::vutil::$@(::vutil::$\&)}} body]} {
         dict set refMap ::vutil::$& ""
     }
-    if {[regsub -all {\$@\.} $body {${@(::vutil::$.)}} body]} {
+    if {[regsub -all {\$@\.} $body {${::vutil::$@(::vutil::$.)}} body]} {
         dict set refMap ::vutil::$. ""
     }
     # Get all other references
@@ -1341,7 +1343,7 @@ proc ::vutil::RefSub {body} {
         dict set refMap [string range $match 2 end] ""
     }
     # Perform regsub
-    set body [regsub -all $refExp $body {${@(\1)}}]
+    set body [regsub -all $refExp $body {${::vutil::$@(\1)}}]
     # Handle recursion for escaped object references
     set body [string map {$@@ $@} $body]
     # Return updated body and list of substituted references
@@ -1380,6 +1382,7 @@ proc ::vutil::lop {list op args} {
 # refName       Reference name to copy to. Default blank to return value.
 
 proc ::vutil::leval {body args} {
+    variable $@; # Reference array
     # Interpret input
     set args [lassign [GetRefName {*}$args] refName]
     if {[llength $args] > 1} {
@@ -1413,15 +1416,23 @@ proc ::vutil::leval {body args} {
         } elseif {[$subVar length] != $length} {
             return -code error "incompatible list lengths"
         }
-        lappend varMap @($subName) [$subVar]
+        lappend varMap ::vutil::$@($subName) [$subVar]
     }
-    # Perform evaluation
+    # Handle case with no list references (normal eval)
     if {$length == -1} {
-        # Handle case with no list references (normal eval)
         tailcall new list $refName [uplevel 1 $body]
     }
-    # List references (iterate)
-    tailcall new list $refName [uplevel 1 [list lmap {*}$varMap $body]]    
+    # Handle case with list references (call lmap)
+    try {
+        set oldRefs [array get $@]
+        array unset $@
+        set list [uplevel 1 [list lmap {*}$varMap $body]]
+    } finally {
+        array unset $@
+        array set $@ $oldRefs
+    }
+    # Create the new list
+    tailcall new list $refName $list  
 }
 
 # lexpr --

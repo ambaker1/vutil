@@ -571,7 +571,7 @@ test RefSub {
     lassign [::vutil::RefSub {$@x $@xy(1) $@::z(hi_there) $@& $@. $@@foo}] body refNames
     assert $refNames eq {{::vutil::$&} {::vutil::$.} x xy(1) ::z(hi_there)}; # $@& and $@. first
     set body
-} -result {${@(x)} ${@(xy(1))} ${@(::z(hi_there))} ${@(::vutil::$&)} ${@(::vutil::$.)} $@foo}
+} -result {${::vutil::$@(x)} ${::vutil::$@(xy(1))} ${::vutil::$@(::z(hi_there))} ${::vutil::$@(::vutil::$&)} ${::vutil::$@(::vutil::$.)} $@foo}
 
 test leval {
     # Check that the list evaluation method works
@@ -726,6 +726,15 @@ new float y 6
 $y := {[$.] + [[$x := {[$.] + 5}]] + [$.]}; # 6.0 + 15.0 + 6.0
 $y
 } -result {27.0}
+
+test ListRefNested {
+    # Ensure that $@. can be nested
+} -body {
+new list x {10.0}
+new list y {1.0 2.0}
+$y := {$@. + [[$x := {$@@. + 5}]] + $@.}; # 1.0 + 15.0 + 1.0, 2.0 + 20.0 + 2.0
+$y
+} -result {17.0 24.0}
 
 test lop {
     # Test out lop features
