@@ -12,7 +12,8 @@
 # Define namespace
 namespace eval ::vutil {
     # Internal variables
-    variable &; # Persistent object variable
+    variable $& ""; # Persistent object variable
+    variable $. ""; # Self-reference object variable
     # Object reference name validation regex
     variable refNameExp {(::+|\w+)+(\(\w+\))?}
     # (::+|\w+)+            Matches alphanumeric namespace variables
@@ -21,10 +22,11 @@ namespace eval ::vutil {
     namespace export local; # Access local namespace variables (like global)
     namespace export default; # Set a variable if it does not exist
     namespace export lock unlock; # Hard set a Tcl variable
-    namespace export tie untie $&; # Tie a Tcl variable to a Tcl object
+    namespace export tie untie; # Tie a Tcl variable to a Tcl object
     namespace export link unlink; # Create an object variable
     namespace export var type new; # Object variable class and types
     namespace export lop leval lexpr; # List utilities
+    namespace export $& $.; # Access to special variables
 }
 
 # VARIOUS VARIABLE UTILITIES
@@ -181,7 +183,7 @@ proc ::vutil::LockTrace {value varName index op} {
 proc ::vutil::tie {refName args} {
     # Get proper reference name
     if {$refName eq "&"} {
-        set refName ::vutil::&
+        set refName ::vutil::$&
     } else {
         ValidateRefName $refName
     }
@@ -373,15 +375,6 @@ proc ::vutil::IsRefName {refName} {
     export -->
 }
 
-# $& --
-#
-# Access to persistent reference variable &
-
-proc ::vutil::$& {args} {
-    variable &
-    tailcall [set &] {*}$args
-}
-
 # OBJECT VARIABLES
 ################################################################################
 
@@ -495,8 +488,8 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
 # $varObj                       Get value
 # $varObj = $value              Value assignment
 # $varObj .= $ops               Math operation assignment
-# $varObj := $expr              Expression assignment (use $0 as self-ref)
-# $varObj ::= $body             Tcl evaluation assignment (use $0 as self-ref)
+# $varObj := $expr              Expression assignment (use $. as self-ref)
+# $varObj ::= $body             Tcl evaluation assignment (use $. as self-ref)
 # $varObj1 <- $varObj2          Object assignment (must be same class)
 # $varObj print <$arg ...>      Print object variable value
 # $varObj info <$field>         Get object variable info array (or single value)
@@ -600,7 +593,7 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     # SetExprValue $expr <$level>
     #
     # Arguments:
-    # expr          Math expression to evaluate (use $0 to refer to self)
+    # expr          Math expression to evaluate (use $. to refer to self)
     # level         Level to evaluate at. Default caller (1).
     
     method GetExprValue {expr {level 1}} {
@@ -620,26 +613,16 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     # SetEvalValue $body <$level>
     # 
     # Arguments:
-    # body          Body to evaluate (use $0 to refer to self)
+    # body          Body to evaluate (use $. to refer to self)
     # level         Level to evaluate at. Default caller (1).
     
     method GetEvalValue {body {level 1}} {
-        incr level; # evaluate in caller
         try {
-            # Save [self] in $0 reference.
-            upvar $level 0 0
-            # Save $0 if nested
-            if {[info exists 0]} {
-                set old0 $0
-            }
-            set 0 [self]
-            # Perform evaluation
-            uplevel $level $body
+            set oldDot [set ::vutil::$.]
+            set ::vutil::$. [self]
+            uplevel [incr level] $body
         } finally {
-            # Reset $0 if nested
-            if {[info exists old0]} {
-                set 0 $old0
-            }
+            set ::vutil::$. $oldDot
         }
     }
     method SetEvalValue {body {level 1}} {
@@ -760,8 +743,8 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     # Arguments:
     # varObj        Variable object
     # op arg...     Math operator arguments. See ::tcl::mathop namespace.
-    # expr          Tcl math expression to evaluate (use $0 to refer to self)
-    # body          Body to evaluate (use $0 to refer to self)
+    # expr          Tcl math expression to evaluate (use $. to refer to self)
+    # body          Body to evaluate (use $. to refer to self)
 
     method = {value} {
         my SetValue $value
@@ -1054,19 +1037,19 @@ proc ::vutil::new {type refName args} {
         return $value
     }
     method += {expr} {
-        my SetExprValue "\[\$0\] + ($expr)"
+        my SetExprValue "\[$.\] + ($expr)"
     }
     method -= {expr} {
-        my SetExprValue "\[\$0\] - ($expr)"
+        my SetExprValue "\[$.\] - ($expr)"
     }
     method *= {expr} {
-        my SetExprValue "\[\$0\] * ($expr)"
+        my SetExprValue "\[$.\] * ($expr)"
     }
     method /= {expr} {
-        my SetExprValue "\[\$0\] / ($expr)"
+        my SetExprValue "\[$.\] / ($expr)"
     }
     method **= {expr} {
-        my SetExprValue "\[\$0\] ** ($expr)"
+        my SetExprValue "\[$.\] ** ($expr)"
     }
     export += -= *= /= **=
 }
@@ -1328,6 +1311,7 @@ proc ::vutil::new {type refName args} {
 # Reference objects with the $@ symbol, like the $ symbol for variables.
 # Returns the substituted body, and the list of reference names used.
 # To refer to the global reference object, use "$@&"
+# To refer to self, use "$@."
 #
 # To escape an object reference, use additional @'s. (such as $@@x)
 # Examples:
@@ -1345,8 +1329,11 @@ proc ::vutil::RefSub {body} {
     variable refNameExp; # Regular expression for matching object variables
     # Initialize refMap with any & references
     set refMap ""
-    if {[regsub -all {\$@&} $body {${@(::vutil::\&)}} body]} {
-        dict set refMap ::vutil::& ""
+    if {[regsub -all {\$@&} $body {${@(::vutil::$\&)}} body]} {
+        dict set refMap ::vutil::$& ""
+    }
+    if {[regsub -all {\$@\.} $body {${@(::vutil::$.)}} body]} {
+        dict set refMap ::vutil::$. ""
     }
     # Get all other references
     set refExp "\\\$@($refNameExp)"; # e.g. $@x(1)
@@ -1480,6 +1467,20 @@ proc ::vutil::GetRefName {args} {
         set args [lrange $args 0 end-2]
     }
     return [list $refName {*}$args]
+}
+
+# $& --
+# $. --
+#
+# Access to persistent reference variable $& and self reference $.
+
+proc ::vutil::$& {args} {
+    variable $&
+    tailcall [set $&] {*}$args
+}
+proc ::vutil::$. {args} {
+    variable $.
+    tailcall [set $.] {*}$args
 }
 
 # Finally, provide the package

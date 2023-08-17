@@ -187,25 +187,25 @@ test obj_new {
 } -result {foo}
 
 test obj_ref {
-    # Verify that the "&" refName returns "::vutil::&"
+    # Verify that the "&" refName returns "::vutil::$&"
 } -body {
     set temp [$a --> &]
-    assert $temp eq ${::vutil::&}
+    assert $temp eq ${::vutil::$&}
 } -result {}
 
 test obj_ref_new {
-    # Verify that the "&" refName returns "::vutil::&"
+    # Verify that the "&" refName returns "::vutil::$&"
 } -body {
     var new & {hello world}
     $&
 } -result {hello world}
 
 test obj_ref_copy {
-    # Verify that the "&" refName returns "::vutil::&"
+    # Verify that the "&" refName returns "::vutil::$&"
 } -body {
     var new x {1 2 3}
     $x --> &
-    ${::vutil::&}
+    ${::vutil::$&}
 } -result {1 2 3}
 
 
@@ -568,10 +568,10 @@ test RefSub {
     new list xy(1) {2 3 4}
     new list ::z(hi_there) {a b c}
     new list & {10 20 30}
-    lassign [::vutil::RefSub {$@x $@xy(1) $@::z(hi_there) $@& $@@foo}] body refNames
-    assert {$refNames eq {::vutil::& x xy(1) ::z(hi_there)}}; # $@& first
+    lassign [::vutil::RefSub {$@x $@xy(1) $@::z(hi_there) $@& $@. $@@foo}] body refNames
+    assert $refNames eq {{::vutil::$&} {::vutil::$.} x xy(1) ::z(hi_there)}; # $@& and $@. first
     set body
-} -result {${@(x)} ${@(xy(1))} ${@(::z(hi_there))} ${@(::vutil::&)} $@foo}
+} -result {${@(x)} ${@(xy(1))} ${@(::z(hi_there))} ${@(::vutil::$&)} ${@(::vutil::$.)} $@foo}
 
 test leval {
     # Check that the list evaluation method works
@@ -693,8 +693,8 @@ test list_eval {
     # Ensure that eval operator is working for lists
 } -body {
     new list x {a b c}
-    $x ::= {string toupper $@0}
-    $x @ 0 ::= {string tolower [$0]}
+    $x ::= {string toupper $@.}
+    $x @ 0 ::= {string tolower [$.]}
     $x
 } -result {a B C}
 
@@ -715,15 +715,15 @@ test SelfRef {
     # Ensure that self-referencing works
 } -body {
     new float x 5
-    $x := {[$0] + 5}
+    $x := {[$.] + 5}
     $x
 } -result {10.0}
 
 test SelfRefNested {
-    # Ensure that $0 can be nested
+    # Ensure that $. can be nested
 } -body {
 new float y 6
-$y := {[$0] + [[$x := {[$0] + 5}]] + [$0]}; # 6.0 + 15.0 + 6.0
+$y := {[$.] + [[$x := {[$.] + 5}]] + [$.]}; # 6.0 + 15.0 + 6.0
 $y
 } -result {27.0}
 
@@ -740,13 +740,13 @@ test lop {
 test lexpr_self {
     # Verify that lexpr works with self-referencing
 } -body {
-    [$x := {$@0 + 5}]
+    [$x := {$@. + 5}]
 } -result {7 8 9}
 
 test leval_self {
     # Verify that leval works
 } -body {
-    [$x ::= {string cat A $@0}]
+    [$x ::= {string cat A $@.}]
 } -result {A7 A8 A9}
 
 test numeric_ops {
@@ -758,7 +758,7 @@ test numeric_ops {
     assert [[$z *= 2]] == 6.0
     assert [[$z /= 3]] == 2.0
     assert [[$z **= 3]] == 8.0
-    [$z *= {[$0]}]
+    [$z *= {[$.]}]
 } -result {64.0}
 
 pause
