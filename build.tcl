@@ -315,19 +315,112 @@ test new_list {
 test new_dict {
     # Test all features of the "dict" type
 } -body {
-    new dict dict1
-    $dict1 set a 5
-    $dict1 set b 3
-    $dict1 set c 5
-    assert [$dict1 get a] == 5
-    assert [$dict1 exists c]
-    assert {![$dict1 exists d]}
-    assert [$dict1 set d 7] eq $dict1
-    $dict1 unset d
-    assert [$dict1 size] == 3
-    $dict1 print
-    $dict1 info
-} -result {exists 1 size 3 type dict value {a 5 b 3 c 5}}
+    new dict d {a1 5 a2 6}
+    # dictObj set key ?key ...? value 
+    $d set b 50
+    $d set c 5
+    $d set d 1 2
+    $d set d 2 3
+    # dict info ?field?
+    assert [$d info] eq {exists 1 size 5 type dict value {a1 5 a2 6 b 50 c 5 d {1 2 2 3}}}
+    assert [$d info value] eq [$d]
+    # dict print 
+    $d print
+    set fid [open temp.txt w]
+    $d print $fid
+    close $fid
+    set fid [open temp.txt r]
+assert [read $fid] eq {a1 5
+a2 6
+b 50
+c 5
+d {1 2 2 3}
+}
+close $fid
+file delete temp.txt
+    # dictObj get ?key ...? 
+    assert [$d get a1] == 5
+    assert [$d get d 2] == 3
+    assert [catch {$d get e}]
+    # dictObj exists key ?key ...? 
+    assert [$d exists c]
+    assert ![$d exists e]
+    # dictObj unset key ?key ...? 
+    $d unset d 1
+    assert [$d get d] eq {2 3}
+    # dictObj keys ?globPattern? 
+    assert [$d keys] eq {a1 a2 b c d}
+    assert [$d keys a*] eq {a1 a2}
+    # dictObj values ?globPattern? 
+    assert [$d values] eq {5 6 50 5 {2 3}}
+    assert [$d values 5*] eq {5 50 5}
+    # dictObj size 
+    assert [$d size] == 5
+    assert [$d info size] == 5
+    # dictObj stats (dict info)
+    assert [$d stats] eq [dict info [$d]]
+    # dictObj replace ?key value ...? 
+    $d replace a1 4 a2 7 a3 10
+    assert [$d get a1] == 4
+    assert [$d get a2] == 7
+    assert [$d get a3] == 10
+    assert [$d size] == 6
+    # dictObj remove ?key ...? 
+    $d remove a3
+    assert ![$d exists a3]
+    assert [$d size] == 5
+    # dictObj merge ?dictionaryValue ...?
+    $d merge {a1 5 a2 {foo bar}} {a2 6} {foo bar}
+    assert [$d keys] eq {a1 a2 b c d foo}
+    assert [$d get a2] == 6
+    assert [$d get foo] eq bar
+    # dictObj append key ?string ...?
+    $d append foo ge
+    $d append a2 . 2 5
+    assert [$d get foo] eq barge
+    assert [$d get a2] == 6.25
+    # dictObj lappend key ?value ...? 
+    $d lappend d 3 9 4 10
+    assert [$d get d 4] == 10
+    # dictObj incr key ?increment? 
+    $d incr c
+    assert [$d get c] == 6
+    # dictObj update key varName ?key varName ...? body  
+    $d update foo string {set string [string toupper $string]}
+    assert [$d get foo] eq BARGE
+    # dictObj filter filterType arg ?arg ...?
+    #   dictObj filter key ?globPattern ...? 
+    #   dictObj filter script {keyVariable valueVariable} script 
+    #   dictObj filter value ?globPattern ...? 
+    [$d --> temp] filter key a*
+    assert [$temp keys] eq {a1 a2}
+    [$d --> temp] filter value B*
+    assert [$temp keys] eq foo
+    [$d --> temp] filter script {key value} {
+        expr {[llength $value] > 1}
+    }
+    assert [$temp keys] eq d
+    unset temp
+    # dictObj for {keyVariable valueVariable} body 
+    $d for {key value} {
+        if {$key eq "foo"} {
+            break
+        }
+    }
+    assert $value eq "BARGE"
+    # dictObj map {keyVariable valueVariable} body 
+    $d map {key value} {
+        set key [string toupper $key]
+        set value
+    }
+    assert [$d keys] eq {A1 A2 B C D FOO}
+    # dictObj with ?key ...? body 
+    $d with {
+        set FOO bar
+    }
+    assert [$d get FOO] eq "bar"
+    $d info
+} -result {exists 1 size 6 type dict value {A1 5 A2 6.25 B 50 C 6 D {2 3 3 9 4 10} FOO bar}}
 
 test new_float {
     # Test all features of the "float" type
