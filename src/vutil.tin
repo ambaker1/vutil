@@ -1276,12 +1276,13 @@ proc ::vutil::new {type refName args} {
 # LIST UTILITIES
 ################################################################################
 
-# RefSub --
+# ::vutil::refsub --
 #
 # Reference objects with the $@ symbol, like the $ symbol for variables.
 # Returns the substituted body, and the list of reference names used.
 # To refer to the global reference object, use "$@&"
 # To refer to self, use "$@."
+# Not exported, intended for internal use within packages.
 #
 # To escape an object reference, use additional @'s. (such as $@@x)
 # Examples:
@@ -1290,12 +1291,12 @@ proc ::vutil::new {type refName args} {
 # $@@@x: Escaped $@@x (etc.)
 #
 # Syntax:
-# RefSub $body
+# ::vutil::refsub $body
 #
 # Arguments:
 # body          Tcl body with object variable references with $@ref syntax
 
-proc ::vutil::RefSub {body} {
+proc ::vutil::refsub {body} {
     variable refNameExp; # Regular expression for matching object variables
     # Initialize refMap with any & references
     set refMap ""
@@ -1364,7 +1365,7 @@ proc ::vutil::leval {body args} {
     }
     # Normal case (no input list)
     # Perform @ substitution and get names of substituted variables
-    lassign [RefSub $body] body subNames
+    lassign [refsub $body] body subNames
     # Get variable mapping
     set varMap ""
     set length -1

@@ -653,7 +653,7 @@ test gcoo_superclass3 {
     llength [info class instances count]
 } -result {2}
 
-test RefSub {
+test refsub {
     # Make sure that the reference substitution works
 } -body {
     unset x y z
@@ -661,7 +661,7 @@ test RefSub {
     new list xy(1) {2 3 4}
     new list ::z(hi_there) {a b c}
     new list & {10 20 30}
-    lassign [::vutil::RefSub {$@x $@xy(1) $@::z(hi_there) $@& $@. $@@foo}] body refNames
+    lassign [::vutil::refsub {$@x $@xy(1) $@::z(hi_there) $@& $@. $@@foo}] body refNames
     assert $refNames eq {::& ::. x xy(1) ::z(hi_there)}; # $@& and $@. first
     set body
 } -result {$::vutil::at(x) $::vutil::at(xy(1)) $::vutil::at(::z(hi_there)) $::vutil::at(::&) $::vutil::at(::.) $@foo}
