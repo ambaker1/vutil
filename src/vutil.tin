@@ -1100,10 +1100,7 @@ proc ::vutil::new {type refName args} {
 ::vutil::type new list {
     # Modify API for lists
     method ValidateValue {value} {
-        if {[catch {llength $value} result]} {
-            return -code error $result
-        }
-        return $value
+        return [list {*}$value]
     }
     method UpdateFields {} {
         set (length) [my length]
@@ -1169,10 +1166,7 @@ proc ::vutil::new {type refName args} {
 ::vutil::type new dict {
     # Adjust standard methods for dictionary type
     method ValidateValue {value} {
-        if {[catch {dict size $value} result]} {
-            return -code error $result
-        }
-        return $value
+        return [dict create {*}$value]
     }
     method UpdateFields {} {
         set (size) [my size]
@@ -1222,7 +1216,7 @@ proc ::vutil::new {type refName args} {
     }
     # dictObj lappend key ?value ...? 
     method lappend {key args} {
-        dict incr (value) $key {*}$args
+        dict lappend (value) $key {*}$args
         return [self]
     }
     # dictObj map {keyVariable valueVariable} body 
@@ -1242,7 +1236,7 @@ proc ::vutil::new {type refName args} {
     }
     # dictObj replace ?key value ...? 
     method replace {args} {
-        set (value) [dict remove [my GetValue] {*}$args]
+        set (value) [dict replace [my GetValue] {*}$args]
         return [self]
     }
     # dictObj set key ?key ...? value 
@@ -1272,7 +1266,7 @@ proc ::vutil::new {type refName args} {
     method values {args} {
         dict values [my GetValue] {*}$args
     }
-    # dictObjwith ?key ...? body 
+    # dictObj with ?key ...? body 
     method with {args} {
         uplevel 1 [list dict with [self] {*}$args]
         return [self]
