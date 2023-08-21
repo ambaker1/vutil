@@ -12,8 +12,8 @@
 # Define namespace
 namespace eval ::vutil {
     # Internal variables
-    variable ref; # Reference array variable
-    array unset ref
+    variable at; # Reference array variable
+    array unset at
     # Object reference name validation regex
     variable refNameExp {(::+|\w+)+(\(\w+\))?}
     # (::+|\w+)+            Matches alphanumeric namespace variables
@@ -1299,10 +1299,10 @@ proc ::vutil::RefSub {body} {
     variable refNameExp; # Regular expression for matching object variables
     # Initialize refMap with any & references
     set refMap ""
-    if {[regsub -all {\$@&} $body {$::vutil::ref(::\&)} body]} {
+    if {[regsub -all {\$@&} $body {$::vutil::at(::\&)} body]} {
         dict set refMap ::& ""
     }
-    if {[regsub -all {\$@\.} $body {$::vutil::ref(::.)} body]} {
+    if {[regsub -all {\$@\.} $body {$::vutil::at(::.)} body]} {
         dict set refMap ::. ""
     }
     # Get all other references
@@ -1311,15 +1311,12 @@ proc ::vutil::RefSub {body} {
         dict set refMap [string range $match 2 end] ""
     }
     # Perform regsub
-    set body [regsub -all $refExp $body {$::vutil::ref(\1)}]
+    set body [regsub -all $refExp $body {$::vutil::at(\1)}]
     # Handle recursion for escaped object references
     set body [string map {$@@ $@} $body]
     # Return updated body and list of substituted references
     return [list $body [dict keys $refMap]]
 }
-# Defunct public API (now just a private procedure)
-# To be removed in v2.0
-proc ::vutil::refsub {body} {tailcall RefSub $body}
 
 # lop --
 #
@@ -1353,7 +1350,7 @@ proc ::vutil::lop {list op args} {
 # refName       Reference name to copy to. Default blank to return value.
 
 proc ::vutil::leval {body args} {
-    variable ref; # Reference array
+    variable at; # Reference array
     # Interpret input
     set args [lassign [GetRefName {*}$args] refName]
     if {[llength $args] > 1} {
@@ -1387,7 +1384,7 @@ proc ::vutil::leval {body args} {
         } elseif {[$subVar length] != $length} {
             return -code error "incompatible list lengths"
         }
-        lappend varMap ::vutil::ref($subName) [$subVar]
+        lappend varMap ::vutil::at($subName) [$subVar]
     }
     # Handle case with no list references (normal eval)
     if {$length == -1} {
@@ -1395,12 +1392,12 @@ proc ::vutil::leval {body args} {
     }
     # Handle case with list references (call lmap)
     try {
-        set oldRefs [array get ref]
-        array unset ref
+        set oldRefs [array get at]
+        array unset at
         set list [uplevel 1 [list lmap {*}$varMap $body]]
     } finally {
-        array unset ref
-        array set ref $oldRefs
+        array unset at
+        array set at $oldRefs
     }
     # Create the new list
     tailcall new list $refName $list  

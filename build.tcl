@@ -664,7 +664,7 @@ test RefSub {
     lassign [::vutil::RefSub {$@x $@xy(1) $@::z(hi_there) $@& $@. $@@foo}] body refNames
     assert $refNames eq {::& ::. x xy(1) ::z(hi_there)}; # $@& and $@. first
     set body
-} -result {$::vutil::ref(x) $::vutil::ref(xy(1)) $::vutil::ref(::z(hi_there)) $::vutil::ref(::&) $::vutil::ref(::.) $@foo}
+} -result {$::vutil::at(x) $::vutil::at(xy(1)) $::vutil::at(::z(hi_there)) $::vutil::at(::&) $::vutil::at(::.) $@foo}
 
 test leval {
     # Check that the list evaluation method works
