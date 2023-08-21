@@ -8,11 +8,10 @@ tin import vutil
 # Factory procedure (creates objects)
 proc foo {who} {
     new string message {hello }; # initialize object
-    append $message $who; # modify with Tcl commands
-    $message --> &; # copy to shared object
-    return $&; # return shared object
+    append $message $who; # modify directly with Tcl commands
+    return [$message --> &]; # copy to shared object and return
 }
-[foo {world}] --> bar; # create from proc
+[foo {world}] --> bar; # create from procedure
 $bar = [string toupper [$bar]]; # value assignment
 $bar print; # additional object methods
 ```
