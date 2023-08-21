@@ -181,7 +181,7 @@ Valid reference variables for the \cmdlink{tie} command must match the following
 \begin{lstlisting}
 (::+|\w+)+(\(\w+\))?
 \end{lstlisting}
-The one exception to this rule is the shared global reference ``\textbf{\texttt{\&}}''. 
+The one exception to this rule is the shared global reference variable ``\textbf{\texttt{\&}}''.
 This shared reference, regardless of scope, can be accessed with the command ``\textbf{\texttt{\cmdlink{\$\&}}}''.
 \begin{syntax}
 \command{\$\&} \$arg ...
@@ -191,26 +191,30 @@ This shared reference, regardless of scope, can be accessed with the command ``\
 \end{args}
 
 Reference variables can also be referred to with the ``\texttt{\$@ref}'' syntax in the context of iterator functions. 
-The engine for this is the command \cmdlink{refsub}, which performs ``\texttt{\$@ref}'' substitution on a given string, returning the updated string and all matched reference names. 
-For example, ``\texttt{\$@ref}'' is converted to ``\texttt{\$\{@(ref)\}}''.
+The engine for this is the command \cmdlink{::vutil::refsub}, which performs ``\texttt{\$@ref}'' substitution on a given string, returning the updated string and all matched reference names. 
+For example, ``\texttt{\$@ref}'' is converted to ``\texttt{\$::vutil::at(ref)}''.
 To escape a reference, especially for nested substitution, simply add more ``\texttt{@}'' symbols, like ``\texttt{\$@@ref}''.
 \begin{syntax}
-\command{refsub} \$string
+\command{::vutil::refsub} \$string
 \end{syntax}
+\begin{args}
+\$string & String to perform substitution with.
+\end{args}
 
-\begin{example}{Reference Variable Substitution}
+There are two special references: ``\texttt{\$@\&}'' and ``\texttt{\$@\.}''. Both refer to the global variables ``\texttt{\&}'' and ``\texttt{.}'', respectively, and they are always listed first in the reference variable list, as shown in the example below:
+\begin{example}{Reference variable substitution}
 \begin{lstlisting}
-lassign [refsub {$@& + $@x(1) $@@y}] string refs
+lassign [::vutil::refsub {$@& + $@x(1) - $@@y + $@.}] string refs
 puts $string
 puts $refs
 \end{lstlisting}
 \tcblower
 \begin{lstlisting}
-${@(::vutil::&)} + ${@(x(1))} $@y
-::vutil::& x(1)
+$::vutil::at(::&) + $::vutil::at(x(1)) $@y $::vutil::at(::.) 
+::& ::. x(1)
 \end{lstlisting}
 \end{example}
-A simple example of this is provided for the \subcmdlink[0]{new}{list} type, with the commands \cmdlink{leval} and \cmdlink{lexpr}.
+A simple example of this is provided for the \subcmdlink[0]{new}{list} type, with the commands \cmdlink{leval} and \cmdlink{lexpr}, which allow you to write scripts or math expressions that automatically map over lists.
 
 \clearpage
 \subsection{Garbage Collection Superclass}
@@ -341,6 +345,8 @@ hello world
 0
 \end{lstlisting}
 \end{example}
+
+
 \clearpage
 \subsection{Metadata Methods}
 Additional information about the object variable can be accessed with object variable methods:
@@ -377,26 +383,18 @@ Hello World
 
 
 \clearpage
-\subsection{Direct Assignment Operators}
+\subsection{Assignment Operators}
 In addition to being able to manipulate object variables directly with Tcl commands, variables can also be manipulated with object variable operators.
-
-The operators ``\texttt{\methodlink[0]{var}{=}}'' and ``\texttt{\methodlink[0]{var}{:=}}'' assign the value of the object variable, and return the name of the object.
+The operator method ``\texttt{\methodlink[0]{var}{=}}'' assigns the value directly, and the operator method ``\texttt{\methodlink[0]{var}{<-}}'' assigns the value and metadata directly from another object variable of the same class, and both return the name of the object.
 \begin{syntax}
 \method{var}{=} \$value
 \end{syntax}
 \begin{syntax}
-\method{var}{:=} \$expr
-\end{syntax}
-\begin{args}
-\$value & Value to set object variable to. \\
-\$expr & Math expression to evaluate and set as object value. 
-\end{args}
-The operator ``\texttt{\methodlink[0]{var}{<-}}'' assigns the value of the object directly from another object variable of the same class, and, like the operator  ``\texttt{\methodlink[0]{var}{=}}'', returns the name of the object.
-\begin{syntax}
 \method{var}{<-} \$otherVarObj 
 \end{syntax}
 \begin{args}
-\$otherVarObj & Other object variable to assign value from.
+\$value & Value to set object variable to. \\
+\$otherVarObj & Other object variable to assign value from (must be same class).
 \end{args}
 
 The example below demonstrates the myriad of ways object variables can be manipulated:
@@ -405,7 +403,7 @@ The example below demonstrates the myriad of ways object variables can be manipu
 var new x; # Create blank variable $x
 [$x --> y] = 5; # Copy $x to $y, and set to 5
 [var new z] <- [$x <- $y]; # Create $z and set to x after setting $x to $y.
-$z := {[$z] + [$x]}; # Add $x to $z
+$z = [expr {[$z] + [$x]}]; # Add $x to $z
 append $y [set $x 0]; # Append $y the value of $x after setting $x to 0
 puts [list [$x] [$y] [$z]]
 \end{lstlisting}
@@ -414,6 +412,51 @@ puts [list [$x] [$y] [$z]]
 0 50 10
 \end{lstlisting}
 \end{example}
+
+\clearpage
+
+\subsubsection{Advanced Assignment Operators}
+The operator methods ``\texttt{\methodlink[0]{var}{.=}}'', ``\texttt{\methodlink[0]{var}{:=}}'', and ``\texttt{\methodlink[0]{var}{::=}}'' are similar to the operator method ``\texttt{\methodlink[0]{var}{=}}'', except that they can perform a transformation on the existing value of the object variable. 
+\begin{syntax}
+\method{var}{.=} \$oper
+\end{syntax}
+\begin{syntax}
+\method{var}{:=} \$expr
+\end{syntax}
+\begin{syntax}
+\method{var}{::=} \$body
+\end{syntax}
+\begin{args}
+\$oper & Tcl math operator and additional mathop arguments, i.e. \texttt{"+ 5"}. \\
+\$expr & Tcl expression to evaluate. \\
+\$body & Tcl script to evaluate.
+\end{args}
+
+The operator ``\texttt{\methodlink[0]{var}{.=}}'' passes the value of the object as the first argument in the corresponding Tcl mathop command, allowing for modification in reference to the current value.
+Similarly, the operators ``\texttt{\methodlink[0]{var}{:=}}'' and ``\texttt{\methodlink[0]{var}{::=}}'', allow for object self-reference using the command ``\cmdlink{\$.}'', which accesses the global read-only self-reference variable ``\texttt{.}''.
+\begin{syntax}
+\command{\$.} <\$arg ...>
+\end{syntax}
+\begin{args}
+\$arg ... & Arguments for object.
+\end{args}
+
+Check out the example below for some examples of how you can use these features to modify variables. 
+\begin{example}{Advanced object variable manipulation}
+\begin{lstlisting}
+var new x 5.0; # Create variable $x
+[[var new y] <- $x] .= {+ 10}; # Create new variable y, set to x, and add 10.
+set p 2; # Create primative variable
+$y := {[$.] ** $p + [$x]}; # Square y, plus $x (230.0) (accesses $p)
+$y ::= {split [$.] .}; # Split at decimal (230 0)
+$y print
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+230 0
+\end{lstlisting}
+\end{example}
+
 
 \clearpage
 \section{Object Variable Types}
@@ -660,7 +703,7 @@ proc hmean {x y} {
     new float y $y
     [new float z] := {2*[$x]*[$y]}
     if {[$z] != 0} {
-        $z := {[$z] / ([$x] + [$y])}
+        $z := {[$.] / ([$x] + [$y])}
     }
     return [$z]
 }
@@ -674,7 +717,7 @@ puts [hmean 1 2]; # 1.3333
 
 \clearpage
 \subsection{Type ``list''}
-The type ``\subcmdlink[0]{new}{list}'' validates that the input is a list, and additionally passes input from its main ``\texttt{:=}'' operator through the \cmdlink{lexpr} command. All self-referencing operators pass through the Tcl \textit{lmap} command.
+The type ``\subcmdlink[0]{new}{list}'' validates that the input is a list, adds the field ``length'' to the info dictionary, and additionally passes input from the operators ``\texttt{.=}'', ``\texttt{:=}'', and ``\texttt{::=}'' through the commands \cmdlink{lop}, \cmdlink{lexpr}, and \cmdlink{leval}.
 \begin{syntax}
 \subcommand{new}{list} \$refName <\$value>
 \end{syntax}
@@ -682,116 +725,73 @@ The type ``\subcmdlink[0]{new}{list}'' validates that the input is a list, and a
 \$refName & Name of reference variable to tie to object. \\
 \$value & List value.
 \end{args}
-The method \textit{length} returns the list length. This is the same as ``\texttt{\$listObj info length}''.
+The method \methodlink[0]{list}{length} returns the list length. This is the same as ``\texttt{\$listObj info length}''.
 \begin{syntax}
-\$listObj length
+\method{list}{length}
 \end{syntax}
-The method ``\texttt{@}'' acts as either list indexing or list setting, depending on whether the ``\texttt{=}'' or ``\texttt{:=}'' keywords are used.
-If indexing, it returns the value at the specified index. 
-If setting, it sets the value and returns the object name.
-\begin{syntax}
-\$listObj @ \$i ... <''='' \$value | '':='' \$expr>
-\end{syntax}
-\begin{args}
-\$i ... & List indices. \\
-\$value & Value to set. \\
-\$expr & Math expression, passed through \cmdlink{lexpr} command.
-\end{args}
 
-\begin{example}{List example}
+\begin{example}{List info}
 \begin{lstlisting}
-[new list list1] = {hello world}
-puts [$list1 length]; # 2
-$list1 @ 0 = "hey"
-$list1 @ 1 = "there"
-$list1 @ end+1 = "world"
-puts [$list1 @ end]; # world
-set a 5
-$list1 @ end+1 := {$a + 1}
-puts [$list1 info]; # exists 1 length 4 type list value {hey there world 6}
+new list x {foo bar}
+puts [$x info]
 \end{lstlisting}
 \tcblower
 \begin{lstlisting}
-2
-world
-exists 1 length 4 type list value {hey there world 6}
+exists 1 type list length 2 value {foo bar}
 \end{lstlisting}
 \end{example}
-\clearpage
-\subsection{Type ``dict''}
-The type ``\subcmdlink[0]{new}{dict}'' validates that the input is a Tcl dictionary, and provides methods for getting/setting/unsetting dictionary values, checking if values exist, and getting the dictionary size. Additionally, it adds the field ``size'' to the variable info. 
-\begin{syntax}
-\subcommand{new}{dict} \$refName <\$value>
-\end{syntax}
-\begin{args}
-\$refName & Name of reference variable to tie to object. \\
-\$value & Dictionary value.
-\end{args}
-The method \$dictObj size returns the dictionary size. This is the same as ``\texttt{\$dictObj info size}''.
-\begin{syntax}
-\$dictObj size
-\end{syntax}
-The methods \textit{set} and \textit{unset} set and unset values in the dictionary, and return the object name.
-The method \textit{get} returns values in the dictionary, and the method \textit{exists} returns whether the key pairing exists.
-\begin{syntax}
-\$dictObj set \$key ... \$value
-\end{syntax}
-\begin{syntax}
-\$dictObj unset \$key ...
-\end{syntax}
-\begin{syntax}
-\$dictObj get \$key ...
-\end{syntax}
-\begin{syntax}
-\$dictObj exists \$key ...
-\end{syntax}
-\begin{args}
-\$key ... & Dictionary keys. \\
-\$value & Value to set. 
-\end{args}
-\clearpage
-Below is an example of how the dictionary variable type can streamline basic dictionary queries.
-Note that not all of the subcommands of the Tcl \cmdlink{dict} are provided as dictionary object methods, but because it is an object variable, it can still be manipulated using normal \textit{dict} commands as well.
-\begin{example}{Dictionary example}
-\begin{lstlisting}
-# Create dictionary record
-new dict record {
-    name {John Doe}
-    address {
-        streetAddress {123 Main Street}
-        city {New York}
-        state {NY}
-        zip {10001}
-    }
-    phone {555-1234} 
-}
 
-# Get values
-puts [$record size]; # Number of keys (3)
-puts [$record get name]; # John Doe
-# Set/unset and get
-$record set address street [$record get address streetAddress]
-$record unset address streetAddress
-puts [$record get address street]; # 123 Main Street
-puts [$record exists address streetAddress]; # 0
-# Manipulate with normal dict commands
-dict lappend $record name Smith
-puts [$record get name]
+\clearpage
+\subsubsection{List Math Operations}
+The command \cmdlink{lop} performs simple math over lists, and is also built-in to the ``\texttt{.=}'' list operator.
+\begin{syntax}
+\command{lop} \$list \$op <\$arg ...>
+\end{syntax}
+\begin{args}
+\$list & List value to map over. \\
+\$op & Tcl math operator. \\
+\$arg ... & Additional mathop arguments.
+\end{args}
+\begin{example}{Element-wise operations}
+\begin{lstlisting}
+# Primative variable method
+set x {1 2 3}
+set x [lop $x * 2]
+puts $x
+# Object variable method
+new list x {1 2 3}
+$x .= {* 2}
+$x print
 \end{lstlisting}
 \tcblower
 \begin{lstlisting}
-3
-John Doe
-123 Main Street
-0
-John Doe Smith
+2 4 6
+2 4 6
 \end{lstlisting}
 \end{example}
-\clearpage
-\section{List Object Mapping}
-Using the \cmdlink{refsub} syntax, you can create powerful wrapper commands. As a demonstration, this package provides two simple list object mapping commands: \cmdlink{leval} and \cmdlink{lexpr}.
-The \cmdlink{lexpr} command additionally is built-in to the ``\texttt{:=}'' operator for the \subcmdlink[0]{new}{list} type.
+\begin{example}{Nested list operations}
+\begin{lstlisting}
+# Primative variable method
+set x {1 2 3}
+set x [lop [lop [lop $x + 1] * 2] - 3]
+puts $x
+# Object variable method
+new list x {1 2 3}
+[[$x .= {+ 1}] .= {* 2}] .= {- 3}
+$x print
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+1 3 5
+1 3 5
+\end{lstlisting}
+\end{example}
 
+
+\clearpage
+\subsubsection{List Reference Mapping}
+Using the \cmdlink{::vutil::refsub} syntax, you can create powerful wrapper commands. 
+As a demonstration, this package provides two simple list object mapping commands: \cmdlink{leval} and \cmdlink{lexpr}, which are built-in to the ``\texttt{:=}'' and ``\texttt{::=}'' list operators.
 \begin{syntax}
 \command{leval} \$body <"-{}->" \$refName>
 \end{syntax}
@@ -799,12 +799,12 @@ The \cmdlink{lexpr} command additionally is built-in to the ``\texttt{:=}'' oper
 \command{lexpr} \$expr <"-{}->" \$refName>
 \end{syntax}
 \begin{args}
-\$body & Body with list object references. \\
-\$expr & Tcl math expression with list object references. \\
+\$body & Tcl script with list object references. \\
+\$expr & Tcl expression with list object references. \\
 \$refName & Optional reference variable to tie resulting list to. Blank to return value.
 \end{args}
 
-\begin{example}{Element-wise math}
+\begin{example}{Element-wise expressions}
 \begin{lstlisting}
 new list x {1 2 3}
 new list y {4 5 6}
@@ -823,15 +823,290 @@ $z print
 new list list1 {a b c d}
 new list list2 {1 2 3 4}
 leval {list $@list1 $@list2} --> zipped
+$zipped ::= {string toupper $@.}
 $zipped print
 \end{lstlisting}
 \tcblower
 \begin{lstlisting}
-{a 1} {b 2} {c 3} {d 4}
+{A 1} {B 2} {C 3} {D 4}
 \end{lstlisting}
 \end{example}
+
 \clearpage
-{\large \printindex}
+\subsubsection{List indexing}
+The methods ``\texttt{\methodlink[0]{list}{@}}'' and ``\texttt{\methodlink[0]{list}{@@}}'' either index or modify the list, depending on whether an assignment operator is used. 
+If indexing, it calls \textit{lindex} or \textit{lrange}, and returns the corresponding value or range. 
+If modifying with an assignment operator, it modifies the list with \textit{lset} or \textit{lreplace} and returns the object name. 
+The ``\texttt{=}'' operator simply modifies the list directly.
+The other assignment operator create a temporary list variable for the specified index/range and evaluates the assignment operator on the temporary list. 
+Then, it modifies the main list with the resulting value of the temporary list, and finally returns the object name. 
+\begin{syntax}
+\protect\hypertarget{\$listObj @}{\$listObj @}\index{list methods!"@} \$i ... <\$op \$arg>
+\end{syntax}
+\begin{syntax}
+\protect\hypertarget{\$listObj @@}{\$listObj @@}\index{list methods!"@"@} \$first \$last <\$op \$arg>
+\end{syntax}
+\begin{args}
+\$i ... & List indices. \\
+\$first & First index in range. \\
+\$last & Last index in range. \\
+\$op \$arg & Assignment operator (\texttt{= .= := ::=}) and corresponding input. \\
+\quad = \$value & Value to set. \\
+\quad .= \$oper & Tcl math operator and additional mathop arguments, i.e. \texttt{"+ 5"}. \\
+\quad := \$expr & Tcl expression to evaluate. \\
+\quad ::= \$body & Tcl script to evaluate.
+\end{args}
+
+\begin{example}{List indexing}
+\begin{lstlisting}
+new list list1 ""
+$list1 @ 0 = "hey"
+$list1 @ 1 = "there"
+$list1 @ end+1 = "world"
+set a 5
+$list1 @ end+1 := {$a * 2}
+$list1 @@ 0 1 ::= {string totitle $@.}
+$list1 print
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+Hey There world 10
+\end{lstlisting}
+\end{example}
+
+\clearpage
+\subsection{Type ``dict''}
+The type ``\subcmdlink[0]{new}{dict}'' validates that the input is a Tcl dictionary, and provides methods for all the Tcl dictionary subcommands, with the exception of \textit{info}, which due to a conflict with the standard method \textit{info}, was replaced with \methodlink{dict}{stats}. 
+Additionally, it adds the field ``size'' to the variable info. 
+This package only provides a new, more convenient way to access the Tcl dictionary data structure, which is fully explained and documented here: \url{https://www.tcl.tk/man/tcl/TclCmd/dict.html}.
+\begin{syntax}
+\subcommand{new}{dict} \$refName <\$value>
+\end{syntax}
+\begin{args}
+\$refName & Name of reference variable to tie to object. \\
+\$value & Dictionary value.
+\end{args}
+Below is an example of how the dictionary variable type can streamline basic dictionary queries.
+\begin{example}{Dictionary example}
+\begin{lstlisting}
+# Create dictionary record
+new dict record {
+    name {John Doe}
+    address {
+        streetAddress {123 Main Street}
+        city {New York}
+    }
+    phone {555-1234} 
+}
+# Get values
+puts [$record size]; # Number of keys (3)
+puts [$record get name]; # John Doe
+# Set/unset and get
+$record set address street [$record get address streetAddress]
+$record unset address streetAddress
+puts [$record get address street]; # 123 Main Street
+puts [$record exists address streetAddress]; # 0
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+3
+John Doe
+123 Main Street
+0
+\end{lstlisting}
+\end{example}
+
+\clearpage
+\subsubsection{Dictionary Access Methods}
+
+The method \methodlink[0]{dict}{get} is equivalent to the Tcl command \textit{dict get}. 
+It retrieves values from the dictionary at the specified key sequence, and returns an error if entry does not exist.
+\begin{syntax}
+\method{dict}{get} <\$key ...>
+\end{syntax}
+\begin{args}
+\$key... & Sequence of keys to query. 
+\end{args}
+
+The method \methodlink[0]{dict}{exists} is equivalent to the Tcl command \textit{dict exists}.
+It returns a boolean value indicating whether a value exists at the specified key sequence. 
+\begin{syntax}
+\method{dict}{exists} \$key <\$key ...>
+\end{syntax}
+\begin{args}
+\$key... & Sequence of keys to query. 
+\end{args}
+
+The method \methodlink[0]{dict}{keys} is equivalent to the Tcl command \textit{dict keys}.
+It retrieves a list of the keys stored in the dictionary, with an optional ``glob'' pattern.
+\begin{syntax}
+\method{dict}{keys} <\$globPattern>
+\end{syntax}
+\begin{args}
+\$globPattern & Optional pattern to match keys with. Default all keys.
+\end{args}
+
+The method \methodlink[0]{dict}{values} is equivalent to the Tcl command \textit{dict values}.
+It retrieves a list of the values stored in the dictionary, with an optional ``glob'' pattern.
+\begin{syntax}
+\method{dict}{values} <\$globPattern>
+\end{syntax}
+\begin{args}
+\$globPattern & Optional pattern to match values with. Default all values.
+\end{args}
+
+The method \methodlink[0]{dict}{size} is equivalent to the Tcl command \textit{dict size}. This is the same as ``\texttt{\$dictObj info size}''.
+It simply returns the number of key-value pairings in the dictionary.
+\begin{syntax}
+\method{dict}{size}
+\end{syntax}
+
+The method \methodlink[0]{dict}{stats} is equivalent to the Tcl command \textit{dict info}. This is the only method that is renamed from the Tcl subcommand counterpart, due to a conflict with the standard object variable method \methodlink[0]{var}{info}.
+It simply returns data about the implementation of the dictionary datatype.
+\begin{syntax}
+\method{dict}{stats}
+\end{syntax}
+\clearpage
+\subsubsection{Dictionary Modification Methods}
+
+The method \methodlink[0]{dict}{set} is equivalent to the Tcl command \textit{dict set}, except that it returns the object name.
+It assigns values to the dictionary at the specified key sequence.
+\begin{syntax}
+\method{dict}{set} \$key <\$key ...> \$value
+\end{syntax}
+\begin{args}
+\$key... & Sequence of keys to set. \\
+\$value & Value to set at key sequence.
+\end{args}
+
+The method \methodlink[0]{dict}{unset} is equivalent to the Tcl command \textit{dict unset}, except that it returns the object name.
+It is the counterpart to \methodlink{dict}{set}, and unsets the dictionary entry at the specified key sequence.
+\begin{syntax}
+\method{dict}{unset} \$key <\$key ...>
+\end{syntax}
+\begin{args}
+\$key... & Sequence of keys to unset. 
+\end{args}
+
+The method \methodlink[0]{dict}{replace} is equivalent to the Tcl command \textit{dict replace}, except that it modifies the object and returns the object name.
+It is similar to \methodlink{dict}{set}, except that multiple key-value pairings can be specified (or none).
+\begin{syntax}
+\method{dict}{replace} <\$key \$value...>
+\end{syntax}
+\begin{args}
+\$key... & Key(s) to replace at. \\
+\$value... & Value(s) to replace with. 
+\end{args}
+
+The method \methodlink[0]{dict}{remove} is equivalent to the Tcl command \textit{dict remove}, except that it modifies the object and returns the object name.
+It is similar to \methodlink{dict}{unset}, except that multiple keys can be specified (or none).
+\begin{syntax}
+\method{dict}{remove} <\$key ...>
+\end{syntax}
+\begin{args}
+\$key... & Key(s) to remove
+\end{args}
+
+The method \methodlink[0]{dict}{merge} is equivalent to the Tcl command \textit{dict merge}, except that it returns the object name.
+It merges the entries from multiple dictionaries into the dictionary object variable. 
+\begin{syntax}
+\method{dict}{merge} <\$dictionaryValue ...>
+\end{syntax}
+\begin{args}
+\$dictionaryValue ... & Dictionary values to merge into object dictionary. 
+\end{args}
+\clearpage
+\subsubsection{Dictionary Entry Manipulation Methods}
+
+The method \methodlink[0]{dict}{append} is equivalent to the Tcl command \textit{dict append}, except that it returns the object name.
+It treats the dictionary entry value as a string, and appends to the string. 
+\begin{syntax}
+\method{dict}{append} \$key <\$string ...>
+\end{syntax}
+\begin{args}
+\$key & Key to append at. \\
+\$string ... & Text to append to dictionary entry.
+\end{args}
+
+The method \methodlink[0]{dict}{lappend} is equivalent to the Tcl command \textit{dict lappend}, except that it returns the object name.
+It treats the dictionary entry value as a list, and appends to the list.
+\begin{syntax}
+\method{dict}{lappend} \$key <\$value ...>
+\end{syntax}
+\begin{args}
+\$key & Key to lappend at. \\
+\$value ... & Values to append to list at specified key.
+\end{args}
+
+The method \methodlink[0]{dict}{incr} is equivalent to the Tcl command \textit{dict incr}, except that it returns the object name.
+It treats the dictionary entry value as an integer, and increments the value.
+\begin{syntax}
+\method{dict}{incr} \$key <\$incr>
+\end{syntax}
+\begin{args}
+\$key & Key to increment at. \\
+\$incr & Increment value. Default 1.
+\end{args}
+
+The method \methodlink[0]{dict}{update} is equivalent to the Tcl command \textit{dict update}.
+It allows for modification of dictionary entries directly using a Tcl script.
+\begin{syntax}
+\method{dict}{update} \$key \$varName <\$key \$varName ...> \$body
+\end{syntax}
+\begin{args}
+\$key... & Keys to update. \\
+\$varName... & Variables to store values at specified keys. \\
+\$body & Script to evaluate. 
+\end{args}
+\clearpage
+\subsubsection{Dictionary Mapping Methods}
+
+The method \methodlink[0]{dict}{filter} is equivalent to the Tcl command \textit{dict filter}, except that it modifies the object and returns the object name.
+It removes entries that do not fit the specified criteria.
+\begin{syntax}
+\method{dict}{filter} \$filterType \$arg <\$arg ...>
+\end{syntax}
+\begin{args}
+\$filterType & Dictionary filter type. \\
+\$arg ... & Additional arguments. See documentation for Tcl command \textit{dict filter}.
+\end{args}
+
+The method \methodlink[0]{dict}{for} is equivalent to the Tcl command \textit{dict for}.
+It simply loops over the dictionary and evaluates a script.
+\begin{syntax}
+\method{dict}{for} "\$keyVariable \$valueVariable" \$body
+\end{syntax}
+\begin{args}
+\$keyVariable & Variable to store dictionary key in. \\
+\$valueVariable & Variable to store dictionary entry values in. \\
+\$body & Tcl script to evaluate for each dictionary entry.
+\end{args}
+
+The method \methodlink[0]{dict}{map} is equivalent to the Tcl command \textit{dict map}, except that it modifies the object and returns the object name.
+It is equivalent to \methodlink{dict}{for}, except that the result of each iteration gets stored in the dictionary at the corresponding key.
+\begin{syntax}
+\method{dict}{map} "\$keyVariable \$valueVariable" \$body
+\end{syntax}
+\begin{args}
+\$keyVariable & Variable to store dictionary key in. \\
+\$valueVariable & Variable to store dictionary entry values in. \\
+\$body & Tcl script to evaluate for each dictionary entry.
+\end{args}
+
+The method \methodlink[0]{dict}{with} is equivalent to the Tcl command \textit{dict with}. 
+It sets variables with names equal to the dictionary key names, and evaluates a script. 
+Note that this should not be used if the dictionary key names conflict with the object variable name.
+\begin{syntax}
+\method{dict}{with} <\$key ...> \$body
+\end{syntax}
+\begin{args}
+\$key... & Sequence of keys containing the dictionary to use. \\
+\$body & Tcl script to evaluate with entries as variables.
+\end{args}
+
+
+\clearpage
+{\small\printindex}
 \end{document}
 
 

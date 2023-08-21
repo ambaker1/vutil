@@ -1,9 +1,13 @@
 # Define version numbers
-set version 1.0
-set tin_version 0.8
+set version 1.1
+set tin_version 1.0
 
 # Load required packages for testing
 package require tin $tin_version
+# For testing in OpenSees
+if {[info commands test] eq "test"} {
+    rename test ops_test
+}
 tin import tcltest
 tin import assert from tin
 
@@ -13,6 +17,8 @@ tin bake src build $config
 tin bake doc/template/version.tin doc/template/version.tex $config
 source build/vutil.tcl
 namespace import vutil::*
+
+tin import flytrap
 
 # Perform tests
 test local {
@@ -185,25 +191,25 @@ test obj_new {
 } -result {foo}
 
 test obj_ref {
-    # Verify that the "&" refName returns "::vutil::&"
+    # Verify that the "&" refName returns "::&"
 } -body {
     set temp [$a --> &]
-    assert $temp eq ${::vutil::&}
+    assert $temp eq ${::&}
 } -result {}
 
 test obj_ref_new {
-    # Verify that the "&" refName returns "::vutil::&"
+    # Verify that the "&" refName returns "::&"
 } -body {
     var new & {hello world}
     $&
 } -result {hello world}
 
 test obj_ref_copy {
-    # Verify that the "&" refName returns "::vutil::&"
+    # Verify that the "&" refName returns "::&"
 } -body {
     var new x {1 2 3}
     $x --> &
-    ${::vutil::&}
+    ${::&}
 } -result {1 2 3}
 
 
@@ -307,25 +313,120 @@ test new_list {
     assert [$list1 @ end] eq "world"
     set a 5
     $list1 @ end+1 := {$a + 1}
+    $list1 @@ 0 1 ::= {string totitle $@.}; # Range modification
+    assert [$list1 @@ end-1 end] eq {world 6}
     $list1 info
-} -result {exists 1 length 4 type list value {hey there world 6}}
+} -result {exists 1 length 4 type list value {Hey There world 6}}
 
 test new_dict {
     # Test all features of the "dict" type
 } -body {
-    new dict dict1
-    $dict1 set a 5
-    $dict1 set b 3
-    $dict1 set c 5
-    assert [$dict1 get a] == 5
-    assert [$dict1 exists c]
-    assert {![$dict1 exists d]}
-    assert [$dict1 set d 7] eq $dict1
-    $dict1 unset d
-    assert [$dict1 size] == 3
-    $dict1 print
-    $dict1 info
-} -result {exists 1 size 3 type dict value {a 5 b 3 c 5}}
+    new dict d {a1 5 a2 6}
+    # dictObj set key ?key ...? value 
+    $d set b 50
+    $d set c 5
+    $d set d 1 2
+    $d set d 2 3
+    # dict info ?field?
+    assert [$d info] eq {exists 1 size 5 type dict value {a1 5 a2 6 b 50 c 5 d {1 2 2 3}}}
+    assert [$d info value] eq [$d]
+    # dict print 
+    $d print
+    set fid [open temp.txt w]
+    $d print $fid
+    close $fid
+    set fid [open temp.txt r]
+assert [read $fid] eq {a1 5
+a2 6
+b 50
+c 5
+d {1 2 2 3}
+}
+close $fid
+file delete temp.txt
+    # dictObj get ?key ...? 
+    assert [$d get a1] == 5
+    assert [$d get d 2] == 3
+    assert [catch {$d get e}]
+    # dictObj exists key ?key ...? 
+    assert [$d exists c]
+    assert ![$d exists e]
+    # dictObj unset key ?key ...? 
+    $d unset d 1
+    assert [$d get d] eq {2 3}
+    # dictObj keys ?globPattern? 
+    assert [$d keys] eq {a1 a2 b c d}
+    assert [$d keys a*] eq {a1 a2}
+    # dictObj values ?globPattern? 
+    assert [$d values] eq {5 6 50 5 {2 3}}
+    assert [$d values 5*] eq {5 50 5}
+    # dictObj size 
+    assert [$d size] == 5
+    assert [$d info size] == 5
+    # dictObj stats (dict info)
+    assert [$d stats] eq [dict info [$d]]
+    # dictObj replace ?key value ...? 
+    $d replace a1 4 a2 7 a3 10
+    assert [$d get a1] == 4
+    assert [$d get a2] == 7
+    assert [$d get a3] == 10
+    assert [$d size] == 6
+    # dictObj remove ?key ...? 
+    $d remove a3
+    assert ![$d exists a3]
+    assert [$d size] == 5
+    # dictObj merge ?dictionaryValue ...?
+    $d merge {a1 5 a2 {foo bar}} {a2 6} {foo bar}
+    assert [$d keys] eq {a1 a2 b c d foo}
+    assert [$d get a2] == 6
+    assert [$d get foo] eq bar
+    # dictObj append key ?string ...?
+    $d append foo ge
+    $d append a2 . 2 5
+    assert [$d get foo] eq barge
+    assert [$d get a2] == 6.25
+    # dictObj lappend key ?value ...? 
+    $d lappend d 3 9 4 10
+    assert [$d get d 4] == 10
+    # dictObj incr key ?increment? 
+    $d incr c
+    assert [$d get c] == 6
+    # dictObj update key varName ?key varName ...? body  
+    $d update foo string {set string [string toupper $string]}
+    assert [$d get foo] eq BARGE
+    # dictObj filter filterType arg ?arg ...?
+    #   dictObj filter key ?globPattern ...? 
+    #   dictObj filter script {keyVariable valueVariable} script 
+    #   dictObj filter value ?globPattern ...? 
+    [$d --> temp] filter key a*
+    assert [$temp keys] eq {a1 a2}
+    [$d --> temp] filter value B*
+    assert [$temp keys] eq foo
+    [$d --> temp] filter script {key value} {
+        expr {[llength $value] > 1}
+    }
+    assert [$temp keys] eq d
+    unset temp
+    # dictObj for {keyVariable valueVariable} body 
+    $d for {key value} {
+        if {$key eq "foo"} {
+            break
+        }
+    }
+    assert $value eq "BARGE"
+    # dictObj map {keyVariable valueVariable} body 
+    $d map {key value} {
+        set key [string toupper $key]
+        set value
+    }
+    assert [$d keys] eq {A1 A2 B C D FOO}
+    # dictObj with ?key ...? body 
+    $d with {
+        set FOO bar
+    }
+    assert [$d get FOO] eq "bar"
+    $d info
+} -result {exists 1 size 6 type dict value {A1 5 A2 6.25 B 50 C 6 D {2 3 3 9 4 10} FOO bar}}
 
 test new_float {
     # Test all features of the "float" type
@@ -566,10 +667,10 @@ test refsub {
     new list xy(1) {2 3 4}
     new list ::z(hi_there) {a b c}
     new list & {10 20 30}
-    lassign [refsub {$@x $@xy(1) $@::z(hi_there) $@& $@@foo}] body refNames
-    assert {$refNames eq {::vutil::& x xy(1) ::z(hi_there)}}; # $@& first
+    lassign [::vutil::refsub {$@x $@xy(1) $@::z(hi_there) $@& $@. $@@foo}] body refNames
+    assert $refNames eq {::& ::. x xy(1) ::z(hi_there)}; # $@& and $@. first
     set body
-} -result {${@(x)} ${@(xy(1))} ${@(::z(hi_there))} ${@(::vutil::&)} $@foo}
+} -result {$::vutil::at(x) $::vutil::at(xy(1)) $::vutil::at(::z(hi_there)) $::vutil::at(::&) $::vutil::at(::.) $@foo}
 
 test leval {
     # Check that the list evaluation method works
@@ -687,6 +788,15 @@ test crossprod {
     crossprod {3 -3 1} {4 9 2}
 } -result {-15 -2 39}
 
+test list_eval {
+    # Ensure that eval operator is working for lists
+} -body {
+    new list x {a b c}
+    $x ::= {string toupper $@.}
+    $x @ 0 ::= {string tolower $@.}
+    $x
+} -result {a B C}
+
 test add_lists {
     # Create prodecure to add lists together
 } -body {
@@ -699,6 +809,54 @@ test add_lists {
     new list B {2.0 2.0 4.0}
     add $A $B
 } -result {3.0 4.0 7.0}
+
+test SelfRef {
+    # Ensure that self-referencing works
+} -body {
+    new float x 5
+    $x := {[$.] + 5}
+    $x
+} -result {10.0}
+
+test SelfRefNested {
+    # Ensure that $. can be nested
+} -body {
+new float y 6
+$y := {[$.] + [[$x := {[$.] + 5}]] + [$.]}; # 6.0 + 15.0 + 6.0
+$y
+} -result {27.0}
+
+test ListRefNested {
+    # Ensure that $@. can be nested
+} -body {
+new list x {10.0}
+new list y {1.0 2.0}
+$y := {$@. + [[$x := {$@@. + 5}]] + $@.}; # 1.0 + 15.0 + 1.0, 2.0 + 20.0 + 2.0
+$y
+} -result {17.0 24.0}
+
+test lop {
+    # Test out lop features
+} -body {
+    assert [lop {1 2 3} + 1] eq {2 3 4}
+    assert [lop {1 0 1} !] eq {0 1 0}
+    assert [lop 0 + {*}{1 2 3 4}] eq 10
+    new list x {1 2 3}
+    [$x .= {+ 1}]
+} -result {2 3 4}
+
+test lexpr_self {
+    # Verify that lexpr works with self-referencing
+} -body {
+    [$x := {$@. + 5}]
+} -result {7 8 9}
+
+test leval_self {
+    # Verify that leval works
+} -body {
+    [$x ::= {string cat A $@.}]
+} -result {A7 A8 A9}
+
 
 # Check number of failed tests
 set nFailed $::tcltest::numTests(Failed)

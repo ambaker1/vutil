@@ -18,7 +18,7 @@ type new str {
 }
 new str x
 set $x {hello world}
-puts [$x length]
-puts [$x info]
-puts [$x @ end]
-$x print
+puts [$x length]; # 11
+puts [$x info]; # exists 1 length 11 type str value {hello world}
+puts [$x @ end]; # d
+$x print; # hello world

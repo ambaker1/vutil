@@ -12,7 +12,8 @@
 # Define namespace
 namespace eval ::vutil {
     # Internal variables
-    variable &; # Persistent object variable
+    variable at; # Reference array variable
+    array unset at
     # Object reference name validation regex
     variable refNameExp {(::+|\w+)+(\(\w+\))?}
     # (::+|\w+)+            Matches alphanumeric namespace variables
@@ -21,11 +22,11 @@ namespace eval ::vutil {
     namespace export local; # Access local namespace variables (like global)
     namespace export default; # Set a variable if it does not exist
     namespace export lock unlock; # Hard set a Tcl variable
-    namespace export tie untie $&; # Tie a Tcl variable to a Tcl object
+    namespace export tie untie; # Tie a Tcl variable to a Tcl object
     namespace export link unlink; # Create an object variable
     namespace export var type new; # Object variable class and types
-    namespace export refsub; # Substitute object references
-    namespace export leval lexpr; # List object evaluation
+    namespace export lop leval lexpr; # List utilities
+    namespace export $& $.; # Access to special variables
 }
 
 # VARIOUS VARIABLE UTILITIES
@@ -182,7 +183,7 @@ proc ::vutil::LockTrace {value varName index op} {
 proc ::vutil::tie {refName args} {
     # Get proper reference name
     if {$refName eq "&"} {
-        set refName ::vutil::&
+        set refName ::&
     } else {
         ValidateRefName $refName
     }
@@ -308,15 +309,6 @@ proc ::vutil::TieVarTrace {objName varName index op} {
 proc ::vutil::TieObjTrace {args} {
     puts stderr "FATAL: cannot rename tied objects"
     exit 2
-}
-
-# $& --
-#
-# Persistent shared object variable reference.
-
-proc ::vutil::$& {args} {
-    variable &
-    tailcall [set &] {*}$args
 }
 
 # ValidateRefName
@@ -495,7 +487,9 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
 # Basic methods:
 # $varObj                       Get value
 # $varObj = $value              Value assignment
-# $varObj := $expr              Expression assignment
+# $varObj .= $ops               Math operation assignment
+# $varObj := $expr              Expression assignment (use $. as self-ref)
+# $varObj ::= $body             Tcl evaluation assignment (use $. as self-ref)
 # $varObj1 <- $varObj2          Object assignment (must be same class)
 # $varObj print <$arg ...>      Print object variable value
 # $varObj info <$field>         Get object variable info array (or single value)
@@ -542,7 +536,6 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     
     # GetValue --
     # SetValue --
-    # SetExprValue --
     # ValidateValue --
     #
     # Basic API for retrieving and setting the (value) of the object.
@@ -551,12 +544,10 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     # Syntax:
     # my GetValue
     # my SetValue $value
-    # my SetExprValue $expr
     # my ValidateValue $value
     #
     # Arguments:
     # value     New value for object
-    # expr      Math expression to evaluate
     
     method GetValue {} {
         # Handle DNE case
@@ -569,11 +560,75 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
         set (value) [my ValidateValue $value]
         return [self]
     }
-    method SetExprValue {expr {level 1}} {
-        my SetValue [uplevel [incr level] [list expr $expr]]
-    }
     method ValidateValue {value} {
         return $value
+    }
+    
+    # GetOpValue --
+    # SetOpValue --
+    # 
+    # Math operation getting/setting
+    #
+    # Syntax:
+    # GetOpValue $op <$arg...>
+    # SetOpValue $op <$arg...>
+    #
+    # Arguments:
+    # op arg...     Math operator arguments
+    
+    method GetOpValue {op args} {
+        ::tcl::mathop::$op [my GetValue] {*}$args
+    }
+    method SetOpValue {op args} {
+        my SetValue [my GetOpValue $op {*}$args]
+    }
+    
+    # GetExprValue --
+    # SetExprValue --
+    # 
+    # Math expression getting/setting
+    #
+    # Syntax:
+    # GetExprValue $expr <$level>
+    # SetExprValue $expr <$level>
+    #
+    # Arguments:
+    # expr          Math expression to evaluate (use $. to refer to self)
+    # level         Level to evaluate at. Default caller (1).
+    
+    method GetExprValue {expr {level 1}} {
+        my GetEvalValue [list expr $expr] [incr level]
+    }
+    method SetExprValue {expr {level 1}} {
+        my SetValue [my GetExprValue $expr [incr level]]
+    }
+    
+    # GetEvalValue --
+    # SetEvalValue --
+    # 
+    # Tcl evaluation getting/setting
+    #
+    # Syntax:
+    # GetEvalValue $body <$level>
+    # SetEvalValue $body <$level>
+    # 
+    # Arguments:
+    # body          Body to evaluate (use $. to refer to self)
+    # level         Level to evaluate at. Default caller (1).
+    
+    method GetEvalValue {body {level 1}} {
+        try {
+            # Save old self-reference, and set new.
+            set old [::vutil::default ::. ""]
+            ::vutil::lock ::. [self]; # Prevent modification (only a reference)
+            uplevel [incr level] $body
+        } finally {
+            ::vutil::unlock ::.
+            set ::. $old
+        }
+    }
+    method SetEvalValue {body {level 1}} {
+        my SetValue [my GetEvalValue $body [incr level]]
     }
     
     # GetObject --
@@ -581,7 +636,7 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     # UpdateFields --
     #
     # Get/Set the object array.
-    # Modify UpdateFields to update the info array.
+    # Modify UpdateFields to update the info array when the variable exists.
     #
     # Syntax:
     # GetObject
@@ -613,7 +668,6 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     }
     method UpdateFields {} {}
 
-    
     # PUBLIC METHODS
     ########################################################################
       
@@ -663,7 +717,7 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     
     # (unknown) --
     #
-    # Object value query operators (returns value).
+    # Object value
     #
     # Syntax:
     # $varObj; # Returns value
@@ -677,27 +731,36 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     }
     unexport unknown
     
-    # (= :=) --
+    # (= .= := ::=) --
     #
     # Value assignment operators.
     # Returns object name
     #
     # Syntax:
     # $varObj = $value
+    # $varObj .= "$op <$arg...>"
     # $varObj := $expr
+    # $varObj ::= $body
     #
     # Arguments:
     # varObj        Variable object
-    # value         Value to assign
-    # arg args...   Value to pass through "expr" function
-    
+    # op arg...     Math operator arguments. See ::tcl::mathop namespace.
+    # expr          Tcl math expression to evaluate (use $. to refer to self)
+    # body          Body to evaluate (use $. to refer to self)
+
     method = {value} {
         my SetValue $value
+    }
+    method .= {ops} {
+        my SetOpValue {*}$ops
     }
     method := {expr} {
         my SetExprValue $expr
     }
-    export = :=
+    method ::= {body} {
+        my SetEvalValue $body
+    }
+    export = .= := ::=
 }
 
 # InitVar --
@@ -1028,26 +1091,27 @@ proc ::vutil::new {type refName args} {
 # new list --
 #
 # Almost everything is a list. Asserts that input is a list.
-# This data type also has "length" and "@" methods.
+# This data type also has "length", "@", and "@@" methods.
 #
 # Additional methods:
 # length    list length (llength)
 # @         list index/set (lindex/lset)
+# @@        list range/replace (lrange/lreplace)
 
 ::vutil::type new list {
     # Modify API for lists
     method ValidateValue {value} {
-        if {[catch {llength $value} result]} {
-            return -code error $result
-        }
-        return $value
+        return [list {*}$value]
     }
     method UpdateFields {} {
         set (length) [my length]
         next
     }
-    method SetExprValue {expr {level 1}} {
-        my SetValue [uplevel [incr level] [list ::vutil::lexpr $expr]]
+    method GetOpValue {op args} {
+        ::vutil::lop [my GetValue] $op {*}$args
+    }
+    method GetEvalValue {body {level 1}} {
+        next [list ::vutil::leval $body] $level
     }
     
     # Add method for length
@@ -1060,47 +1124,96 @@ proc ::vutil::new {type refName args} {
     # Method to get or set a value in a list.
     #
     # Syntax:
-    # $list @ ?$i ...?
-    # $list @ $i ?$i ...? = $value
-    # $list @ $i ?$i ...? := $expr
+    # $list @ ?$i ...? ?$op $arg?
+    #
+    # Arguments:
+    # i ...     Indices
+    # op        Assignment operator = .= := ::=
+    # arg       Input for assignment operator.
     
     method @ {args} {
-        switch [lindex $args end-1] {
-            = { # $list @ $i ?$i ...? = $value
-                set value [lindex $args end]
+        # Deal with assignment case
+        if {[lindex $args end-1] in {= .= := ::=}} {
+            # $list @ $i ?$i ...? $op $arg
+            # Interpret input
+            set idx [lrange $args 0 end-2]
+            set op [lindex $args end-1]
+            set arg [lindex $args end]
+            # Switch for method
+            if {$op eq "="} {
+                set value $arg
+            } else {
+                # Create temporary list object for assignment
+                ::vutil::new list temp [list [lindex [my GetValue] {*}$idx]]
+                uplevel 1 [list $temp $op $arg]
+                set value [lindex [$temp] 0]
             }
-            := { # $list @ $i ?$i ...? := $expr
-                set value [uplevel 1 [list expr [lindex $args end]]]
-            }
-            default { # $list @ ?$i ...?
-                return [lindex [my GetValue] {*}$args]
-            }
+            # Assign to object value and return self
+            lset (value) {*}$idx $value
+            return [self]
         }
-        set indices [lrange $args 0 end-2]
-        # Assign and return self
-        lset (value) {*}$indices $value
-        return [self]
+        # Default case (fetch value)
+        # $list @ ?$i ...?
+        return [lindex [my GetValue] {*}$args]
     }
     export @
+    
+    # @@ --
+    #
+    # Method to get or set a range of values in a list, using lrange & lreplace.
+    #
+    # Syntax:
+    # $list @@ $first $last ?$op $arg?
+    #
+    # Arguments:
+    # first     First index
+    # last      Last index
+    # op        Assignment operator = .= := ::=
+    # arg       Input for assignment operator.
+    
+    method @@ {first last args} {
+        # Switch for input type
+        if {[llength $args] == 0} {
+            # $list @@ $first $last
+            return [lrange [my GetValue] $first $last]
+        } elseif {[llength $args] == 2} {
+            # $list @@ $first $last $op $arg
+            # Interpret input
+            set indices [lrange $args 0 end-2]
+            set op [lindex $args end-1]
+            set arg [lindex $args end]
+            # Switch for op, and get replacement value.
+            if {$op eq "="} {
+                set value $arg
+            } elseif {$op in {.= := ::=}} {
+                # Create temporary list object for assignment
+                ::vutil::new list temp [lrange [my GetValue] $first $last]
+                uplevel 1 [list $temp $op $arg]; # perform operation
+                set value [$temp]
+            } else {
+                return -code error "unknown option \"$op\""
+            }
+            # Assign to object value and return self
+            set (value) [lreplace [my GetValue] $first $last {*}$value]
+            return [self]
+        } else {
+            return -code error "wrong # args: should be\
+                    \"listObj @@ first last ?op arg?\""
+        }
+    }
+    export @@
 }
 
 # new dict --
 #
 # Tcl dictionary data type
-#
-# Additional methods:
-# size      dict size
-# set       dict set
-# unset     dict unset
-# get       dict get
-# exists    dict exists
+# Includes methods for every Tcl dict command option, with the exception of 
+# the "info" option, which is replaced with "stats"
 
 ::vutil::type new dict {
+    # Adjust standard methods for dictionary type
     method ValidateValue {value} {
-        if {[catch {dict size $value} result]} {
-            return -code error $result
-        }
-        return $value
+        return [dict create {*}$value]
     }
     method UpdateFields {} {
         set (size) [my size]
@@ -1111,33 +1224,112 @@ proc ::vutil::new {type refName args} {
             puts {*}$args [list $key $value]
         }
     }
-    method size {} {
-        dict size [my GetValue]
+    
+    # DICT METHODS (SAME AS DICT COMMAND OPTIONS, EXCEPT FOR INFO/CREATE) 
+    ########################################################################
+    # dictObj append key ?string ...?
+    method append {key args} {
+        dict append (value) $key {*}$args
+        return [self]
     }
+    # dictObj exists key ?key ...? 
+    method exists {key args} {
+        dict exists [my GetValue] $key {*}$args
+    }
+    # dictObj filter filterType arg ?arg ...?
+    #   dictObj filter key ?globPattern ...? 
+    #   dictObj filter script {keyVariable valueVariable} script 
+    #   dictObj filter value ?globPattern ...? 
+    method filter {type args} {
+        set (value) [uplevel 1 [list dict filter [my GetValue] $type {*}$args]]
+        return [self]
+    }
+    # dictObj for {keyVariable valueVariable} body 
+    method for {varList body} {
+        uplevel 1 [list dict for $varList [my GetValue] $body]
+    }
+    # dictObj get ?key ...? 
+    method get {args} {
+        dict get [my GetValue] {*}$args
+    }
+    # dictObj incr key ?increment? 
+    method incr {key {incr 1}} {
+        dict incr (value) $key $incr
+        return [self]
+    }
+    # dictObj keys ?globPattern? 
+    method keys {args} {
+        dict keys [my GetValue] {*}$args
+    }
+    # dictObj lappend key ?value ...? 
+    method lappend {key args} {
+        dict lappend (value) $key {*}$args
+        return [self]
+    }
+    # dictObj map {keyVariable valueVariable} body 
+    method map {varList body} { 
+        set (value) [uplevel 1 [list dict map $varList [my GetValue] $body]]
+        return [self]
+    }
+    # dictObj merge ?dictionaryValue ...?
+    method merge {args} {
+        set (value) [dict merge [my GetValue] {*}$args]
+        return [self]
+    }
+    # dictObj remove ?key ...? 
+    method remove {args} {
+        set (value) [dict remove [my GetValue] {*}$args]
+        return [self]
+    }
+    # dictObj replace ?key value ...? 
+    method replace {args} {
+        set (value) [dict replace [my GetValue] {*}$args]
+        return [self]
+    }
+    # dictObj set key ?key ...? value 
     method set {key args} {
         dict set (value) $key {*}$args
         return [self]
     }
+    # dictObj size 
+    method size {} {
+        dict size [my GetValue]
+    }
+    # dictObj stats (dict info)
+    method stats {} {
+        dict info [my GetValue]
+    }
+    # dictObj unset key ?key ...? 
     method unset {key args} {
         dict unset (value) $key {*}$args
         return [self]
     }
-    method exists {key args} {
-        dict exists [my GetValue] $key {*}$args
+    # dictObj update key varName ?key varName ...? body  
+    method update {args} {
+        uplevel 1 [list dict update [self] {*}$args]
+        return [self]
     }
-    method get {args} {
-        dict get [my GetValue] {*}$args
+    # dictObj values ?globPattern? 
+    method values {args} {
+        dict values [my GetValue] {*}$args
+    }
+    # dictObj with ?key ...? body 
+    method with {args} {
+        uplevel 1 [list dict with [self] {*}$args]
+        return [self]
     }
 }
 
-# OBJECT ORIENTED EVALUATION
+# LIST UTILITIES
 ################################################################################
 
-# refsub --
+# ::vutil::refsub --
 #
 # Reference objects with the $@ symbol, like the $ symbol for variables.
 # Returns the substituted body, and the list of reference names used.
-# To refer to the reference object, use "$@&"
+# To refer to the global reference object, use "$@&"
+# To refer to self, use "$@."
+# Not exported, intended for internal use within packages.
 #
 # To escape an object reference, use additional @'s. (such as $@@x)
 # Examples:
@@ -1146,17 +1338,20 @@ proc ::vutil::new {type refName args} {
 # $@@@x: Escaped $@@x (etc.)
 #
 # Syntax:
-# refsub $body
+# ::vutil::refsub $body
 #
 # Arguments:
 # body          Tcl body with object variable references with $@ref syntax
 
 proc ::vutil::refsub {body} {
     variable refNameExp; # Regular expression for matching object variables
-    # Initialize refMap with any & and . references
+    # Initialize refMap with any & references
     set refMap ""
-    if {[regsub -all {\$@&} $body {${@(::vutil::\&)}} body]} {
-        dict set refMap ::vutil::& ""
+    if {[regsub -all {\$@&} $body {$::vutil::at(::\&)} body]} {
+        dict set refMap ::& ""
+    }
+    if {[regsub -all {\$@\.} $body {$::vutil::at(::.)} body]} {
+        dict set refMap ::. ""
     }
     # Get all other references
     set refExp "\\\$@($refNameExp)"; # e.g. $@x(1)
@@ -1164,11 +1359,31 @@ proc ::vutil::refsub {body} {
         dict set refMap [string range $match 2 end] ""
     }
     # Perform regsub
-    set body [regsub -all $refExp $body {${@(\1)}}]
+    set body [regsub -all $refExp $body {$::vutil::at(\1)}]
     # Handle recursion for escaped object references
     set body [string map {$@@ $@} $body]
     # Return updated body and list of substituted references
     return [list $body [dict keys $refMap]]
+}
+
+# lop --
+#
+# Perform simple math operations on a list
+#
+# Syntax:
+# lop $list $op args
+#
+# Arguments:
+# list          List value to map operation over
+# op            Math op (::tcl::mathop namespace commands)
+# args          Additional arguments for operator
+#
+# Examples:
+# lop {1 2 3} + 1; # 2 3 4
+# lop {1 2 3} > 1; # 0 1 1
+
+proc ::vutil::lop {list op args} {
+    lmap value $list {::tcl::mathop::$op $value {*}$args}
 }
 
 # leval --
@@ -1176,19 +1391,26 @@ proc ::vutil::refsub {body} {
 # Perform eval, but with list objects using @ref syntax
 #
 # Syntax:
-# leval $body <"-->" refName>
+# leval $body <$list> <"-->" refName>
 #
 # Arguments:
 # body          Body to evaluate, using $@refs for list references.
 # refName       Reference name to copy to. Default blank to return value.
 
 proc ::vutil::leval {body args} {
+    variable at; # Reference array
     # Interpret input
     set args [lassign [GetRefName {*}$args] refName]
-    if {[llength $args]} {
+    if {[llength $args] > 1} {
         return -code error "wrong # args: should be\
                 \"leval body ?--> refName?\""
+    } elseif {[llength $args] == 1} {
+        # Create temporary list object to refer to.
+        new list temp [lindex $args 0]
+        uplevel 1 [list $temp ::= $body]; # Calls leval
+        tailcall new list $refName [$temp]
     }
+    # Normal case (no input list)
     # Perform @ substitution and get names of substituted variables
     lassign [refsub $body] body subNames
     # Get variable mapping
@@ -1210,14 +1432,23 @@ proc ::vutil::leval {body args} {
         } elseif {[$subVar length] != $length} {
             return -code error "incompatible list lengths"
         }
-        lappend varMap @($subName) [$subVar]
+        lappend varMap ::vutil::at($subName) [$subVar]
     }
     # Handle case with no list references (normal eval)
     if {$length == -1} {
         tailcall new list $refName [uplevel 1 $body]
     }
-    # Iterate
-    tailcall new list $refName [uplevel 1 [list lmap {*}$varMap $body]]
+    # Handle case with list references (call lmap)
+    try {
+        set oldRefs [array get at]
+        array unset at
+        set list [uplevel 1 [list lmap {*}$varMap $body]]
+    } finally {
+        array unset at
+        array set at $oldRefs
+    }
+    # Create the new list
+    tailcall new list $refName $list  
 }
 
 # lexpr --
@@ -1225,7 +1456,7 @@ proc ::vutil::leval {body args} {
 # leval, but for math
 #
 # Syntax:
-# lexpr $expr <"-->" refName>
+# lexpr $expr <$list> <"-->" refName>
 #
 # Arguments:
 # expr          Expression, using $@refs for list references
@@ -1233,9 +1464,9 @@ proc ::vutil::leval {body args} {
 
 proc ::vutil::lexpr {expr args} {
     # Check arity
-    if {[llength $args] == 1 || [llength $args] > 2} {
+    if {[llength $args] > 3} {
         return -code error "wrong # args: should be\
-                \"lexpr expr ?--> refName?\""
+                \"lexpr expr ?list? ?--> refName?\""
     }
     tailcall leval [list expr $expr] {*}$args
 }
@@ -1265,5 +1496,17 @@ proc ::vutil::GetRefName {args} {
     return [list $refName {*}$args]
 }
 
+# $& --
+# $. --
+#
+# Access to global object variable "&" and read-only self-reference variable "."
+
+proc ::vutil::$& {args} {
+    tailcall [set ::&] {*}$args
+}
+proc ::vutil::$. {args} {
+    tailcall [set ::.] {*}$args
+}
+
 # Finally, provide the package
-package provide vutil 1.0
+package provide vutil 1.1
