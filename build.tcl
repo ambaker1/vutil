@@ -187,25 +187,25 @@ test obj_new {
 } -result {foo}
 
 test obj_ref {
-    # Verify that the "&" refName returns "::vutil::$&"
+    # Verify that the "&" refName returns "::&"
 } -body {
     set temp [$a --> &]
-    assert $temp eq ${::vutil::$&}
+    assert $temp eq ${::&}
 } -result {}
 
 test obj_ref_new {
-    # Verify that the "&" refName returns "::vutil::$&"
+    # Verify that the "&" refName returns "::&"
 } -body {
     var new & {hello world}
     $&
 } -result {hello world}
 
 test obj_ref_copy {
-    # Verify that the "&" refName returns "::vutil::$&"
+    # Verify that the "&" refName returns "::&"
 } -body {
     var new x {1 2 3}
     $x --> &
-    ${::vutil::$&}
+    ${::&}
 } -result {1 2 3}
 
 
@@ -407,7 +407,7 @@ test type_names {
     # Verify the names of the types
 } -body {
     lsort [type names]
-} -result {bool dict float int list numeric string var}
+} -result {bool dict float int list string var}
 
 test type_exists {
     # Verify that "exists" works
@@ -569,9 +569,9 @@ test RefSub {
     new list ::z(hi_there) {a b c}
     new list & {10 20 30}
     lassign [::vutil::RefSub {$@x $@xy(1) $@::z(hi_there) $@& $@. $@@foo}] body refNames
-    assert $refNames eq {{::vutil::$&} {::vutil::$.} x xy(1) ::z(hi_there)}; # $@& and $@. first
+    assert $refNames eq {::& ::. x xy(1) ::z(hi_there)}; # $@& and $@. first
     set body
-} -result {${::vutil::$@(x)} ${::vutil::$@(xy(1))} ${::vutil::$@(::z(hi_there))} ${::vutil::$@(::vutil::$&)} ${::vutil::$@(::vutil::$.)} $@foo}
+} -result {$::vutil::ref(x) $::vutil::ref(xy(1)) $::vutil::ref(::z(hi_there)) $::vutil::ref(::&) $::vutil::ref(::.) $@foo}
 
 test leval {
     # Check that the list evaluation method works
@@ -758,19 +758,6 @@ test leval_self {
     [$x ::= {string cat A $@.}]
 } -result {A7 A8 A9}
 
-test numeric_ops {
-    # Test out numeric operators
-} -body {
-    new float z 5
-    assert [[$z += 10]] == 15.0
-    assert [[$z -= 12]] == 3.0
-    assert [[$z *= 2]] == 6.0
-    assert [[$z /= 3]] == 2.0
-    assert [[$z **= 3]] == 8.0
-    [$z *= {[$.]}]
-} -result {64.0}
-
-pause
 
 # Check number of failed tests
 set nFailed $::tcltest::numTests(Failed)
