@@ -181,7 +181,7 @@ Valid reference variables for the \cmdlink{tie} command must match the following
 \begin{lstlisting}
 (::+|\w+)+(\(\w+\))?
 \end{lstlisting}
-The one exception to this rule is the shared global reference ``\textbf{\texttt{\&}}'', stored in the variable \texttt{::vutil::\$\&}.
+The one exception to this rule is the shared global reference variable ``\textbf{\texttt{\&}}''.
 This shared reference, regardless of scope, can be accessed with the command ``\textbf{\texttt{\cmdlink{\$\&}}}''.
 \begin{syntax}
 \command{\$\&} \$arg ...
@@ -191,26 +191,30 @@ This shared reference, regardless of scope, can be accessed with the command ``\
 \end{args}
 
 Reference variables can also be referred to with the ``\texttt{\$@ref}'' syntax in the context of iterator functions. 
-The engine for this is the command \cmdlink{::vutil::RefSub}, which performs ``\texttt{\$@ref}'' substitution on a given string, returning the updated string and all matched reference names. 
-For example, ``\texttt{\$@ref}'' is converted to ``\texttt{\$\{::vutil::\$@(ref)\}}''.
+The engine for this is the command \cmdlink{::vutil::refsub}, which performs ``\texttt{\$@ref}'' substitution on a given string, returning the updated string and all matched reference names. 
+For example, ``\texttt{\$@ref}'' is converted to ``\texttt{\$::vutil::at(ref)}''.
 To escape a reference, especially for nested substitution, simply add more ``\texttt{@}'' symbols, like ``\texttt{\$@@ref}''.
 \begin{syntax}
-\command{::vutil::RefSub} \$string
+\command{::vutil::refsub} \$string
 \end{syntax}
+\begin{args}
+\$string & String to perform substitution with.
+\end{args}
 
-\begin{example}{Reference Variable Substitution}
+There are two special references: ``\texttt{\$@\&}'' and ``\texttt{\$@\.}''. Both refer to the global variables ``\texttt{\&}'' and ``\texttt{.}'', respectively, and they are always listed first in the reference variable list, as shown in the example below:
+\begin{example}{Reference variable substitution}
 \begin{lstlisting}
-lassign [::vutil::RefSub {$@& + $@x(1) $@@y}] string refs
+lassign [::vutil::refsub {$@& + $@x(1) - $@@y + $@.}] string refs
 puts $string
 puts $refs
 \end{lstlisting}
 \tcblower
 \begin{lstlisting}
-${::vutil::$@(::vutil::$&)} + ${::vutil::$@(x(1))} $@y
-::vutil::$& x(1)
+$::vutil::at(::&) + $::vutil::at(x(1)) $@y $::vutil::at(::.) 
+::& ::. x(1)
 \end{lstlisting}
 \end{example}
-A simple example of this is provided for the \subcmdlink[0]{new}{list} type, with the commands \cmdlink{leval} and \cmdlink{lexpr}.
+A simple example of this is provided for the \subcmdlink[0]{new}{list} type, with the commands \cmdlink{leval} and \cmdlink{lexpr}, which allow you to write scripts or math expressions that automatically map over lists.
 
 \clearpage
 \subsection{Garbage Collection Superclass}
@@ -379,7 +383,7 @@ Hello World
 
 
 \clearpage
-\subsection{Direct Assignment Operators}
+\subsection{Assignment Operators}
 In addition to being able to manipulate object variables directly with Tcl commands, variables can also be manipulated with object variable operators.
 The operator method ``\texttt{\methodlink[0]{var}{=}}'' assigns the value directly, and the operator method ``\texttt{\methodlink[0]{var}{<-}}'' assigns the value and metadata directly from another object variable of the same class, and both return the name of the object.
 \begin{syntax}
@@ -411,7 +415,7 @@ puts [list [$x] [$y] [$z]]
 
 \clearpage
 
-\subsection{Self-Referencing Assignment Operators}
+\subsubsection{Advanced Assignment Operators}
 The operator methods ``\texttt{\methodlink[0]{var}{.=}}'', ``\texttt{\methodlink[0]{var}{:=}}'', and ``\texttt{\methodlink[0]{var}{::=}}'' are similar to the operator method ``\texttt{\methodlink[0]{var}{=}}'', except that they can perform a transformation on the existing value of the object variable. 
 \begin{syntax}
 \method{var}{.=} \$oper
@@ -429,7 +433,7 @@ The operator methods ``\texttt{\methodlink[0]{var}{.=}}'', ``\texttt{\methodlink
 \end{args}
 
 The operator ``\texttt{\methodlink[0]{var}{.=}}'' passes the value of the object as the first argument in the corresponding Tcl mathop command, allowing for modification in reference to the current value.
-Similarly, the operators ``\texttt{\methodlink[0]{var}{:=}}'' and ``\texttt{\methodlink[0]{var}{::=}}'', allow for object self-reference using the command ``\cmdlink{\$.}''.
+Similarly, the operators ``\texttt{\methodlink[0]{var}{:=}}'' and ``\texttt{\methodlink[0]{var}{::=}}'', allow for object self-reference using the command ``\cmdlink{\$.}'', which accesses the global read-only self-reference variable ``\texttt{.}''.
 \begin{syntax}
 \command{\$.} <\$arg ...>
 \end{syntax}
@@ -721,9 +725,9 @@ The type ``\subcmdlink[0]{new}{list}'' validates that the input is a list, adds 
 \$refName & Name of reference variable to tie to object. \\
 \$value & List value.
 \end{args}
-The method \textit{length} returns the list length. This is the same as ``\texttt{\$listObj info length}''.
+The method \methodlink[0]{list}{length} returns the list length. This is the same as ``\texttt{\$listObj info length}''.
 \begin{syntax}
-\$listObj length
+\method{list}{length}
 \end{syntax}
 
 \begin{example}{List info}
@@ -737,6 +741,7 @@ exists 1 type list length 2 value {foo bar}
 \end{lstlisting}
 \end{example}
 
+\clearpage
 \subsubsection{List Math Operations}
 The command \cmdlink{lop} performs simple math over lists, and is also built-in to the ``\texttt{.=}'' list operator.
 \begin{syntax}
@@ -752,14 +757,40 @@ The command \cmdlink{lop} performs simple math over lists, and is also built-in 
 # Primative variable method
 set x {1 2 3}
 set x [lop $x * 2]
+puts $x
 # Object variable method
 new list x {1 2 3}
 $x .= {* 2}
+$x print
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+2 4 6
+2 4 6
 \end{lstlisting}
 \end{example}
+\begin{example}{Nested list operations}
+\begin{lstlisting}
+# Primative variable method
+set x {1 2 3}
+set x [lop [lop [lop $x + 1] * 2] - 3]
+puts $x
+# Object variable method
+new list x {1 2 3}
+[[$x .= {+ 1}] .= {* 2}] .= {- 3}
+$x print
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+1 3 5
+1 3 5
+\end{lstlisting}
+\end{example}
+
+
 \clearpage
 \subsubsection{List Reference Mapping}
-Using the \cmdlink{::vutil::RefSub} syntax, you can create powerful wrapper commands. 
+Using the \cmdlink{::vutil::refsub} syntax, you can create powerful wrapper commands. 
 As a demonstration, this package provides two simple list object mapping commands: \cmdlink{leval} and \cmdlink{lexpr}, which are built-in to the ``\texttt{:=}'' and ``\texttt{::=}'' list operators.
 \begin{syntax}
 \command{leval} \$body <"-{}->" \$refName>
@@ -792,53 +823,62 @@ $z print
 new list list1 {a b c d}
 new list list2 {1 2 3 4}
 leval {list $@list1 $@list2} --> zipped
+$zipped ::= {string toupper $@.}
 $zipped print
 \end{lstlisting}
 \tcblower
 \begin{lstlisting}
-{a 1} {b 2} {c 3} {d 4}
+{A 1} {B 2} {C 3} {D 4}
 \end{lstlisting}
 \end{example}
 
 \clearpage
 \subsubsection{List indexing}
-The method ``\texttt{@}'' acts as either list indexing or list setting, depending on whether the ``\texttt{=}'' or ``\texttt{:=}'' keywords are used.
-If indexing, it returns the value at the specified index. 
-If setting with the ``\texttt{=}'' operator, it simply performs an lset command and returns the object name. 
-If setting with the other assignment operators, it creates a temporary object variable (class ``\texttt{::vutil::var}'') with the current value, and evaluates the assignment operator, returning the list object name. 
+The methods ``\texttt{\methodlink[0]{list}{@}}'' and ``\texttt{\methodlink[0]{list}{@@}}'' either index or modify the list, depending on whether an assignment operator is used. 
+If indexing, it calls \textit{lindex} or \textit{lrange}, and returns the corresponding value or range. 
+If modifying with an assignment operator, it modifies the list with \textit{lset} or \textit{lreplace} and returns the object name. 
+The ``\texttt{=}'' operator simply modifies the list directly.
+The other assignment operator create a temporary list variable for the specified index/range and evaluates the assignment operator on the temporary list. 
+Then, it modifies the main list with the resulting value of the temporary list, and finally returns the object name. 
 \begin{syntax}
-\$listObj @ \$i ... <''='' \$value | ''.='' \$oper | '':='' \$expr | ''::='' \$body>
+\protect\hypertarget{\$listObj @}{\$listObj @}\index{list methods!"@} \$i ... <\$op \$arg>
+\end{syntax}
+\begin{syntax}
+\protect\hypertarget{\$listObj @@}{\$listObj @@}\index{list methods!"@"@} \$first \$last <\$op \$arg>
 \end{syntax}
 \begin{args}
 \$i ... & List indices. \\
-\$value & Value to set. \\
-\$oper & Tcl math operator and additional mathop arguments, i.e. \texttt{"+ 5"}. \\
-\$expr & Tcl expression to evaluate. \\
-\$body & Tcl script to evaluate.
+\$first & First index in range. \\
+\$last & Last index in range. \\
+\$op \$arg & Assignment operator (\texttt{= .= := ::=}) and corresponding input. \\
+\quad = \$value & Value to set. \\
+\quad .= \$oper & Tcl math operator and additional mathop arguments, i.e. \texttt{"+ 5"}. \\
+\quad := \$expr & Tcl expression to evaluate. \\
+\quad ::= \$body & Tcl script to evaluate.
 \end{args}
 
 \begin{example}{List indexing}
 \begin{lstlisting}
 new list list1 ""
-$list1 @ 0 = "hello"
-$list1 @ 1 = "world"
-$list1 @ 1 ::= {string toupper [$.]}
-puts [$list1 @ 0]
-puts [$list1 @ end]
+$list1 @ 0 = "hey"
+$list1 @ 1 = "there"
+$list1 @ end+1 = "world"
+set a 5
+$list1 @ end+1 := {$a * 2}
+$list1 @@ 0 1 ::= {string totitle $@.}
+$list1 print
 \end{lstlisting}
 \tcblower
 \begin{lstlisting}
-hello
-WORLD
+Hey There world 10
 \end{lstlisting}
 \end{example}
-
 
 \clearpage
 \subsection{Type ``dict''}
 The type ``\subcmdlink[0]{new}{dict}'' validates that the input is a Tcl dictionary, and provides methods for all the Tcl dictionary subcommands, with the exception of \textit{info}, which due to a conflict with the standard method \textit{info}, was replaced with \methodlink{dict}{stats}. 
 Additionally, it adds the field ``size'' to the variable info. 
-This package only provides a new, slightly modified way to access the Tcl dictionary data structure, which is fully explained and documented here: \url{https://www.tcl.tk/man/tcl/TclCmd/dict.html}.
+This package only provides a new, more convenient way to access the Tcl dictionary data structure, which is fully explained and documented here: \url{https://www.tcl.tk/man/tcl/TclCmd/dict.html}.
 \begin{syntax}
 \subcommand{new}{dict} \$refName <\$value>
 \end{syntax}
@@ -985,7 +1025,7 @@ It treats the dictionary entry value as a string, and appends to the string.
 \end{syntax}
 \begin{args}
 \$key & Key to append at. \\
-\$string ... & Text to append to dictionary.
+\$string ... & Text to append to dictionary entry.
 \end{args}
 
 The method \methodlink[0]{dict}{lappend} is equivalent to the Tcl command \textit{dict lappend}, except that it returns the object name.
@@ -1054,17 +1094,19 @@ It is equivalent to \methodlink{dict}{for}, except that the result of each itera
 \end{args}
 
 The method \methodlink[0]{dict}{with} is equivalent to the Tcl command \textit{dict with}. 
-It sets variables with names equal to the dictionary key names, and evaluates a script.
+It sets variables with names equal to the dictionary key names, and evaluates a script. 
+Note that this should not be used if the dictionary key names conflict with the object variable name.
 \begin{syntax}
 \method{dict}{with} <\$key ...> \$body
 \end{syntax}
 \begin{args}
-\$key... & Sequence of keys containing the dictionary to use.
+\$key... & Sequence of keys containing the dictionary to use. \\
+\$body & Tcl script to evaluate with entries as variables.
 \end{args}
 
 
 \clearpage
-\printindex
+{\small\printindex}
 \end{document}
 
 
