@@ -4,6 +4,10 @@ set tin_version 1.0
 
 # Load required packages for testing
 package require tin $tin_version
+# For testing in OpenSees
+if {[info commands test] eq "test"} {
+    rename test ops_test
+}
 tin import tcltest
 tin import assert from tin
 
