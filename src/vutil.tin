@@ -473,7 +473,7 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
 
 # var --
 #
-# Subclass of gcoo, superclass for types. Links the object using ::vutil::link
+# Subclass of gcoo, superclass for types. Links the object using ::vutil::link.
 # Returns [self] for any method that modifies the object.
 # Returns $value only for "unknown", and returns metadata with other methods.
 # 
@@ -487,10 +487,11 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
 # Basic methods:
 # $varObj                       Get value
 # $varObj = $value              Value assignment
-# $varObj .= $ops               Math operation assignment
+# $varObj .= $oper              Math operation assignment
 # $varObj := $expr              Expression assignment (use $. as self-ref)
 # $varObj ::= $body             Tcl evaluation assignment (use $. as self-ref)
 # $varObj1 <- $varObj2          Object assignment (must be same class)
+# $varObj --> $refName          Copy method from ::vutil::gcoo superclass
 # $varObj print <$arg ...>      Print object variable value
 # $varObj info <$field>         Get object variable info array (or single value)
 
@@ -751,8 +752,8 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     method = {value} {
         my SetValue $value
     }
-    method .= {ops} {
-        my SetOpValue {*}$ops
+    method .= {oper} {
+        my SetOpValue {*}$oper
     }
     method := {expr} {
         my SetExprValue $expr
@@ -1333,7 +1334,7 @@ proc ::vutil::new {type refName args} {
 #
 # To escape an object reference, use additional @'s. (such as $@@x)
 # Examples:
-# $@x: Refers to object value, replaced with ${@(x)}
+# $@x: Refers to object value, replaced with $::vutil::at(x)
 # $@@x: Escaped $@x
 # $@@@x: Escaped $@@x (etc.)
 #
@@ -1371,12 +1372,12 @@ proc ::vutil::refsub {body} {
 # Perform simple math operations on a list
 #
 # Syntax:
-# lop $list $op args
+# lop $list $op $arg...
 #
 # Arguments:
 # list          List value to map operation over
 # op            Math op (::tcl::mathop namespace commands)
-# args          Additional arguments for operator
+# arg...        Additional arguments for operator
 #
 # Examples:
 # lop {1 2 3} + 1; # 2 3 4
