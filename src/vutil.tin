@@ -12,10 +12,8 @@
 # Define namespace
 namespace eval ::vutil {
     # Internal variables
-    variable $& ""; # Persistent object variable
-    variable $. ""; # Self-reference object variable
-    variable $@; # Reference array variable
-    array unset $@
+    variable ref; # Reference array variable
+    array unset ref
     # Object reference name validation regex
     variable refNameExp {(::+|\w+)+(\(\w+\))?}
     # (::+|\w+)+            Matches alphanumeric namespace variables
@@ -185,7 +183,7 @@ proc ::vutil::LockTrace {value varName index op} {
 proc ::vutil::tie {refName args} {
     # Get proper reference name
     if {$refName eq "&"} {
-        set refName ::vutil::$&
+        set refName ::&
     } else {
         ValidateRefName $refName
     }
@@ -620,11 +618,13 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     
     method GetEvalValue {body {level 1}} {
         try {
-            set oldDot [set ::vutil::$.]
-            set ::vutil::$. [self]
+            # Save old self-reference, and set new.
+            set old [::vutil::default ::. ""]
+            ::vutil::lock ::. [self]; # Prevent modification (only a reference)
             uplevel [incr level] $body
         } finally {
-            set ::vutil::$. $oldDot
+            ::vutil::unlock ::.
+            set ::. $old
         }
     }
     method SetEvalValue {body {level 1}} {
@@ -1027,35 +1027,6 @@ proc ::vutil::new {type refName args} {
     export @
 }
 
-# new numeric --
-#
-# Asserts numeric, and adds convenience operators.
-
-::vutil::type new numeric {
-    method ValidateValue {value} {
-        if {![string is double -strict $value]} {
-            return -code error "expected numeric value but got \"$value\""
-        }
-        return $value
-    }
-    method += {expr} {
-        my SetExprValue "\[$.\] + ($expr)"
-    }
-    method -= {expr} {
-        my SetExprValue "\[$.\] - ($expr)"
-    }
-    method *= {expr} {
-        my SetExprValue "\[$.\] * ($expr)"
-    }
-    method /= {expr} {
-        my SetExprValue "\[$.\] / ($expr)"
-    }
-    method **= {expr} {
-        my SetExprValue "\[$.\] ** ($expr)"
-    }
-    export += -= *= /= **=
-}
-
 # new bool --
 #
 # Asserts boolean. Also has new if-statement control structure
@@ -1064,7 +1035,6 @@ proc ::vutil::new {type refName args} {
 # ?         Shorthand if-statement (tailcalls "if")
 
 ::vutil::type new bool {
-    superclass -append [::vutil::type class numeric]
     method ValidateValue {value} {
         ::tcl::mathfunc::bool $value
     }
@@ -1087,7 +1057,6 @@ proc ::vutil::new {type refName args} {
 # Numeric subtype. Forces double-precision floating point value.
 
 ::vutil::type new float {
-    superclass -append [::vutil::type class numeric]
     method ValidateValue {value} {
         ::tcl::mathfunc::double $value
     }
@@ -1102,7 +1071,6 @@ proc ::vutil::new {type refName args} {
 # --        Decrement by 1
 
 ::vutil::type new int {
-    superclass -append [::vutil::type class numeric]
     method ValidateValue {value} {
         if {![string is integer -strict $value]} {
             return -code error "expected integer value but got \"$value\""
@@ -1172,11 +1140,17 @@ proc ::vutil::new {type refName args} {
             set indices [lrange $args 0 end-2]
             set method [lindex $args end-1]
             set input [lindex $args end]
-            # Create temporary object for assignment
-            ::vutil::new var element [lindex [my GetValue] {*}$indices]
-            uplevel 1 [list $element $method $input]
+            # Switch for method
+            if {$method eq "="} {
+                set value $input
+            } else {
+                # Create temporary object for assignment
+                ::vutil::new var element [lindex [my GetValue] {*}$indices]
+                uplevel 1 [list $element $method $input]
+                set value [$element]
+            }
             # Assign to object value and return self
-            lset (value) {*}$indices [$element]
+            lset (value) {*}$indices $value
             return [self]
         }
         # Default case (fetch value)
@@ -1242,10 +1216,6 @@ proc ::vutil::new {type refName args} {
         dict incr (value) $key $incr
         return [self]
     }
-    # dictObj stats (dict info)
-    method stats {} {
-        dict info [my GetValue]
-    }
     # dictObj keys ?globPattern? 
     method keys {args} {
         dict keys [my GetValue] {*}$args
@@ -1283,6 +1253,10 @@ proc ::vutil::new {type refName args} {
     # dictObj size 
     method size {} {
         dict size [my GetValue]
+    }
+    # dictObj stats (dict info)
+    method stats {} {
+        dict info [my GetValue]
     }
     # dictObj unset key ?key ...? 
     method unset {key args} {
@@ -1331,11 +1305,11 @@ proc ::vutil::RefSub {body} {
     variable refNameExp; # Regular expression for matching object variables
     # Initialize refMap with any & references
     set refMap ""
-    if {[regsub -all {\$@&} $body {${::vutil::$@(::vutil::$\&)}} body]} {
-        dict set refMap ::vutil::$& ""
+    if {[regsub -all {\$@&} $body {$::vutil::ref(::\&)} body]} {
+        dict set refMap ::& ""
     }
-    if {[regsub -all {\$@\.} $body {${::vutil::$@(::vutil::$.)}} body]} {
-        dict set refMap ::vutil::$. ""
+    if {[regsub -all {\$@\.} $body {$::vutil::ref(::.)} body]} {
+        dict set refMap ::. ""
     }
     # Get all other references
     set refExp "\\\$@($refNameExp)"; # e.g. $@x(1)
@@ -1343,12 +1317,15 @@ proc ::vutil::RefSub {body} {
         dict set refMap [string range $match 2 end] ""
     }
     # Perform regsub
-    set body [regsub -all $refExp $body {${::vutil::$@(\1)}}]
+    set body [regsub -all $refExp $body {$::vutil::ref(\1)}]
     # Handle recursion for escaped object references
     set body [string map {$@@ $@} $body]
     # Return updated body and list of substituted references
     return [list $body [dict keys $refMap]]
 }
+# Defunct public API (now just a private procedure)
+# To be removed in v2.0
+proc ::vutil::refsub {body} {tailcall RefSub $body}
 
 # lop --
 #
@@ -1382,7 +1359,7 @@ proc ::vutil::lop {list op args} {
 # refName       Reference name to copy to. Default blank to return value.
 
 proc ::vutil::leval {body args} {
-    variable $@; # Reference array
+    variable ref; # Reference array
     # Interpret input
     set args [lassign [GetRefName {*}$args] refName]
     if {[llength $args] > 1} {
@@ -1416,7 +1393,7 @@ proc ::vutil::leval {body args} {
         } elseif {[$subVar length] != $length} {
             return -code error "incompatible list lengths"
         }
-        lappend varMap ::vutil::$@($subName) [$subVar]
+        lappend varMap ::vutil::ref($subName) [$subVar]
     }
     # Handle case with no list references (normal eval)
     if {$length == -1} {
@@ -1424,12 +1401,12 @@ proc ::vutil::leval {body args} {
     }
     # Handle case with list references (call lmap)
     try {
-        set oldRefs [array get $@]
-        array unset $@
+        set oldRefs [array get ref]
+        array unset ref
         set list [uplevel 1 [list lmap {*}$varMap $body]]
     } finally {
-        array unset $@
-        array set $@ $oldRefs
+        array unset ref
+        array set ref $oldRefs
     }
     # Create the new list
     tailcall new list $refName $list  
@@ -1483,15 +1460,13 @@ proc ::vutil::GetRefName {args} {
 # $& --
 # $. --
 #
-# Access to persistent reference variable $& and self reference $.
+# Access to global object variable "&" and read-only self-reference variable "."
 
 proc ::vutil::$& {args} {
-    variable $&
-    tailcall [set $&] {*}$args
+    tailcall [set ::&] {*}$args
 }
 proc ::vutil::$. {args} {
-    variable $.
-    tailcall [set $.] {*}$args
+    tailcall [set ::.] {*}$args
 }
 
 # Finally, provide the package
