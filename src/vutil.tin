@@ -1091,11 +1091,12 @@ proc ::vutil::new {type refName args} {
 # new list --
 #
 # Almost everything is a list. Asserts that input is a list.
-# This data type also has "length" and "@" methods.
+# This data type also has "length", "@", and "@@" methods.
 #
 # Additional methods:
 # length    list length (llength)
 # @         list index/set (lindex/lset)
+# @@        list range/replace (lrange/lreplace)
 
 ::vutil::type new list {
     # Modify API for lists
@@ -1123,31 +1124,32 @@ proc ::vutil::new {type refName args} {
     # Method to get or set a value in a list.
     #
     # Syntax:
-    # $list @ ?$i ...?
-    # $list @ $i ?$i ...? = $value
-    # $list @ $i ?$i ...? .= $ops
-    # $list @ $i ?$i ...? := $expr
-    # $list @ $i ?$i ...? ::= $body
+    # $list @ ?$i ...? ?$op $arg?
+    #
+    # Arguments:
+    # i ...     Indices
+    # op        Assignment operator = .= := ::=
+    # arg       Input for assignment operator.
     
     method @ {args} {
         # Deal with assignment case
         if {[lindex $args end-1] in {= .= := ::=}} {
-            # $list @ $i ?$i ...? $method $input
+            # $list @ $i ?$i ...? $op $arg
             # Interpret input
-            set indices [lrange $args 0 end-2]
-            set method [lindex $args end-1]
-            set input [lindex $args end]
+            set idx [lrange $args 0 end-2]
+            set op [lindex $args end-1]
+            set arg [lindex $args end]
             # Switch for method
-            if {$method eq "="} {
-                set value $input
+            if {$op eq "="} {
+                set value $arg
             } else {
-                # Create temporary object for assignment
-                ::vutil::new var element [lindex [my GetValue] {*}$indices]
-                uplevel 1 [list $element $method $input]
-                set value [$element]
+                # Create temporary list object for assignment
+                ::vutil::new list temp [list [lindex [my GetValue] {*}$idx]]
+                uplevel 1 [list $temp $op $arg]
+                set value [lindex [$temp] 0]
             }
             # Assign to object value and return self
-            lset (value) {*}$indices $value
+            lset (value) {*}$idx $value
             return [self]
         }
         # Default case (fetch value)
@@ -1155,6 +1157,51 @@ proc ::vutil::new {type refName args} {
         return [lindex [my GetValue] {*}$args]
     }
     export @
+    
+    # @@ --
+    #
+    # Method to get or set a range of values in a list, using lrange & lreplace.
+    #
+    # Syntax:
+    # $list @@ $first $last ?$op $arg?
+    #
+    # Arguments:
+    # first     First index
+    # last      Last index
+    # op        Assignment operator = .= := ::=
+    # arg       Input for assignment operator.
+    
+    method @@ {first last args} {
+        # Switch for input type
+        if {[llength $args] == 0} {
+            # $list @@ $first $last
+            return [lrange [my GetValue] $first $last]
+        } elseif {[llength $args] == 2} {
+            # $list @@ $first $last $op $arg
+            # Interpret input
+            set indices [lrange $args 0 end-2]
+            set op [lindex $args end-1]
+            set arg [lindex $args end]
+            # Switch for op, and get replacement value.
+            if {$op eq "="} {
+                set value $arg
+            } elseif {$op in {.= := ::=}} {
+                # Create temporary list object for assignment
+                ::vutil::new list temp [lrange [my GetValue] $first $last]
+                uplevel 1 [list $temp $op $arg]; # perform operation
+                set value [$temp]
+            } else {
+                return -code error "unknown option \"$op\""
+            }
+            # Assign to object value and return self
+            set (value) [lreplace [my GetValue] $first $last {*}$value]
+            return [self]
+        } else {
+            return -code error "wrong # args: should be\
+                    \"listObj @@ first last ?op arg?\""
+        }
+    }
+    export @@
 }
 
 # new dict --

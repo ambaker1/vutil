@@ -309,8 +309,10 @@ test new_list {
     assert [$list1 @ end] eq "world"
     set a 5
     $list1 @ end+1 := {$a + 1}
+    $list1 @@ 0 1 ::= {string totitle $@.}; # Range modification
+    assert [$list1 @@ end-1 end] eq {world 6}
     $list1 info
-} -result {exists 1 length 4 type list value {hey there world 6}}
+} -result {exists 1 length 4 type list value {Hey There world 6}}
 
 test new_dict {
     # Test all features of the "dict" type
@@ -787,7 +789,7 @@ test list_eval {
 } -body {
     new list x {a b c}
     $x ::= {string toupper $@.}
-    $x @ 0 ::= {string tolower [$.]}
+    $x @ 0 ::= {string tolower $@.}
     $x
 } -result {a B C}
 
