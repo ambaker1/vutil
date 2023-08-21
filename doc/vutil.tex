@@ -383,7 +383,7 @@ Hello World
 
 
 \clearpage
-\subsection{Assignment Operators}
+\subsection{Standard Assignment Operators}
 In addition to being able to manipulate object variables directly with Tcl commands, variables can also be manipulated with object variable operators.
 The operator method ``\texttt{\methodlink[0]{var}{=}}'' assigns the value directly, and the operator method ``\texttt{\methodlink[0]{var}{<-}}'' assigns the value and metadata directly from another object variable of the same class, and both return the name of the object.
 \begin{syntax}
@@ -415,7 +415,7 @@ puts [list [$x] [$y] [$z]]
 
 \clearpage
 
-\subsubsection{Advanced Assignment Operators}
+\subsection{Advanced Assignment Operators}
 The operator methods ``\texttt{\methodlink[0]{var}{.=}}'', ``\texttt{\methodlink[0]{var}{:=}}'', and ``\texttt{\methodlink[0]{var}{::=}}'' are similar to the operator method ``\texttt{\methodlink[0]{var}{=}}'', except that they can perform a transformation on the existing value of the object variable. 
 \begin{syntax}
 \method{var}{.=} \$oper
@@ -584,7 +584,7 @@ hello world
 \section{Type Library}
 This package provides a few basic object variable types: \subcmdlink[0]{new}{var}, \subcmdlink[0]{new}{string}, \subcmdlink[0]{new}{bool}, \subcmdlink[0]{new}{int}, \subcmdlink[0]{new}{float}, \subcmdlink[0]{new}{list}, and \subcmdlink[0]{new}{dict}.
 
-\subsection{Type ``var''}
+\subsection{Type ``var'' (object variable)}
 The type ``\subcmdlink[0]{new}{var}'' is just an alternative way to create an object variable (same syntax as ``new'' method for \cmdlink{var} class).
 It does not have any additional metadata or methods.
 \begin{syntax}
@@ -875,7 +875,7 @@ Hey There world 10
 \end{example}
 
 \clearpage
-\subsection{Type ``dict''}
+\subsection{Type ``dict'' (dictionary)}
 The type ``\subcmdlink[0]{new}{dict}'' validates that the input is a Tcl dictionary, and provides methods for all the Tcl dictionary subcommands, with the exception of \textit{info}, which due to a conflict with the standard method \textit{info}, was replaced with \methodlink{dict}{stats}. 
 Additionally, it adds the field ``size'' to the variable info. 
 This package only provides a new, more convenient way to access the Tcl dictionary data structure, which is fully explained and documented here: \url{https://www.tcl.tk/man/tcl/TclCmd/dict.html}.
