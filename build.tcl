@@ -1,5 +1,5 @@
 # Define version numbers
-set version 1.1
+set version 1.1.1
 set tin_version 1.0
 
 # Load required packages for testing

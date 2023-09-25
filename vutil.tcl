@@ -521,9 +521,15 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     # Modify <cloned> method for establishing initialization trace and
     # setting up object variable link. See documentation for oo::copy command
     method <cloned> {srcObj} {
-        trace add variable (value) {read write} [list ::vutil::InitVar [self]]
-        ::vutil::link [self]
+        # Copy over everything with standard method
         next $srcObj
+        # Set up init trace if (value) does not exist.
+        if {![info exists (value)]} {
+            trace add variable (value) {read write} \
+                    [list ::vutil::InitVar [self]]
+        }
+        # Set up object variable link
+        ::vutil::link [self]
     }
     
     # Type --
@@ -1510,4 +1516,4 @@ proc ::vutil::$. {args} {
 }
 
 # Finally, provide the package
-package provide vutil 1.1
+package provide vutil 1.1.1
