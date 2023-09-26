@@ -504,14 +504,17 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
             return -code error "wrong # args: should be\
                     \"var new refName ?value?\""
         }
-        # Initialize object array
+        # Initialize object array variable
         set (type) [my Type]
-        set (exists) 0
-        trace add variable (value) {read write} [list ::vutil::InitVar [self]]
         # Initialize if value input is provided
         if {[llength $args] == 1} {
-            # var new $refName $value
-            my = [lindex $args 0]; # Assign value
+            # User provided value
+            my SetValue [lindex $args 0]
+            set (exists) 1
+        } else {
+            # Initialize empty object variable
+            trace add variable (value) {read write} "::vutil::InitVar [self]"
+            set (exists) 0
         }
         # Initialize object variable and set up garbage collection
         ::vutil::link [self]
@@ -523,10 +526,9 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
     method <cloned> {srcObj} {
         # Copy over everything with standard method
         next $srcObj
-        # Set up init trace if (value) does not exist.
-        if {![info exists (value)]} {
-            trace add variable (value) {read write} \
-                    [list ::vutil::InitVar [self]]
+        # Set up init trace if variable DNE.
+        if {!$(exists)} {
+            trace add variable (value) {read write} "::vutil::InitVar [self]"
         }
         # Set up object variable link
         ::vutil::link [self]
