@@ -171,6 +171,22 @@ test tie-trace-count {
     llength [trace info variable a]
 } -result {1}
 
+test var_exists {
+    # Ensure that info exists and $var info exists are the same.
+} -body {
+    var new x
+    assert ![info exists $x]
+    assert ![$x info exists]
+    $x = 10
+    assert [info exists $x]
+    assert [$x info exists]
+    unset x
+    var new x
+    set $x 10
+    assert [info exists $x]
+    assert [$x info exists]
+} -result {}
+
 test obj_untie {
     # Object variable, with gc eliminated using "untie"
 } -body {
