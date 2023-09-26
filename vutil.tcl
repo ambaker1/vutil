@@ -510,6 +510,7 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
         if {[llength $args] == 1} {
             # User provided value
             my SetValue [lindex $args 0]
+            set [self] ""; # Initialize object variable
             set (exists) 1
         } else {
             # Initialize empty object variable
@@ -529,6 +530,9 @@ proc ::vutil::LinkObjTrace {oldName newName op} {
         # Set up init trace if variable DNE.
         if {!$(exists)} {
             trace add variable (value) {read write} "::vutil::InitVar [self]"
+        } else {
+            # Initialize object variable
+            set [self] ""
         }
         # Set up object variable link
         ::vutil::link [self]

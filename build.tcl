@@ -249,6 +249,19 @@ test obj_gc2 {
     foo hi
 } -result {hi}
 
+test obj_gc3 {
+    # Verify that unsetting object also destroys object.
+} -body {
+    var new x {hello world}
+    assert [info exists x]
+    assert [info object isa object $x]
+    unset $x
+    assert [info exists x]
+    assert ![info object isa object $x]
+    unset x
+    assert ![info exists x]
+}
+
 test obj_assignment {
     # Assign values
 } -body {
