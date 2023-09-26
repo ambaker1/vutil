@@ -1,4 +1,4 @@
-# vutil
+# Tcl Variable Utilities (vutil)
 Advanced variable utilities for Tcl, including a type system and garbage collection for TclOO.
 
 For example, the following code demonstrates some basic features of vutil, and prints "HELLO WORLD":
