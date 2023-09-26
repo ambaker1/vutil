@@ -1,5 +1,5 @@
 # Define version numbers
-set version 1.1
+set version 1.1.1
 set tin_version 1.0
 
 # Load required packages for testing
@@ -171,6 +171,22 @@ test tie-trace-count {
     llength [trace info variable a]
 } -result {1}
 
+test var_exists {
+    # Ensure that info exists and $var info exists are the same.
+} -body {
+    var new x
+    assert ![info exists $x]
+    assert ![$x info exists]
+    $x = 10
+    assert [info exists $x]
+    assert [$x info exists]
+    unset x
+    var new x
+    set $x 10
+    assert [info exists $x]
+    assert [$x info exists]
+} -result {}
+
 test obj_untie {
     # Object variable, with gc eliminated using "untie"
 } -body {
@@ -232,6 +248,19 @@ test obj_gc2 {
     }
     foo hi
 } -result {hi}
+
+test obj_gc3 {
+    # Verify that unsetting object also destroys object.
+} -body {
+    var new x {hello world}
+    assert [info exists x]
+    assert [info object isa object $x]
+    unset $x
+    assert [info exists x]
+    assert ![info object isa object $x]
+    unset x
+    assert ![info exists x]
+}
 
 test obj_assignment {
     # Assign values

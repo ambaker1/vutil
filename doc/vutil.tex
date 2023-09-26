@@ -346,6 +346,13 @@ hello world
 \end{lstlisting}
 \end{example}
 
+\subsection{Destroying an Object Variable}
+Because object variables are simply TclOO objects, they can be destroyed with the standard method \methodlink[0]{var}{destroy}. 
+Additionally, unsetting the linked variable or the object variable will also destroy the object.
+\begin{syntax}
+\method{var}{destroy}
+\end{syntax}
+
 
 \clearpage
 \subsection{Metadata Methods}
