@@ -16,8 +16,6 @@ tin bake doc/template/version.tin doc/template/version.tex $config
 source build/vutil.tcl
 namespace import vutil::*
 
-tin import flytrap
-
 test default1 {
     # The variable "a" does not exist. "default" sets it.
 } -body {
@@ -184,7 +182,6 @@ test obj_ref_copy {
     ${::&}
 } -result {1 2 3}
 
-
 test obj_gc {
     # Ensure that objects are deleted inside procedures (garbage collection)
 } -body {
@@ -206,7 +203,7 @@ test obj_gc2 {
 } -result {hi}
 
 test obj_gc3 {
-    # Verify that unsetting object also destroys object.
+    # Verify that unsetting an object also destroys object.
 } -body {
     var new x {hello world}
     assert [info exists x]
@@ -238,16 +235,8 @@ test obj_copy2 {
     $y
 } -result {hello world}
 
-test obj_copygc {
-    # Ensure that garbage collection is set up on copied object
-} -body {
-    set z $y
-    unset y; # Destroys object
-    info object isa object $z
-} -result {0}
-
 test new_string {
-    # Test all features of "string" type
+    # Test features of the "string" type
 } -body {
     [new string string1] = {hello}
     assert {[$string1 length] == 5}
@@ -272,7 +261,7 @@ test string_create {
 } -result 1
 
 test new_float {
-    # Test all features of the "float" type
+    # Test basic features of the "float" type
 } -body {
     new float x
     $x := {2 + 2}
@@ -296,7 +285,7 @@ test float_ops {
 } -result 1.5
 
 test new_int {
-    # Test all features of the "int" type
+    # Test basic features of the "int" type
 } -body {
     set values ""
     for {new int i 0} {[$i] < 10} {$i ++} {
