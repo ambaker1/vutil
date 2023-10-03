@@ -1,19 +1,21 @@
 # Tcl Variable Utilities (vutil)
 Advanced variable utilities for Tcl, including a type system and garbage collection for TclOO.
 
-For example, the following code demonstrates some basic features of vutil, and prints "HELLO WORLD":
+For example, the following code returns the harmonic mean of two numbers, converting input to float.
 ```tcl
 package require tin
 tin import vutil
-# Factory procedure (creates objects)
-proc foo {who} {
-    new string message {hello }; # initialize object
-    append $message $who; # modify directly with Tcl commands
-    return [$message --> &]; # copy to shared object and return
+# Harmonic mean of two numbers (converts to float)
+proc hmean {x y} {
+    new float x $x
+    new float y $y
+    [new float z] := {2*[$x]*[$y]}
+    if {[$z] != 0} {
+        $z /= {[$x] + [$y]}
+    }
+    return [$z]
 }
-[foo {world}] --> bar; # create from procedure
-$bar = [string toupper [$bar]]; # value assignment
-$bar print; # additional object methods
+puts [hmean 1 2]; # 1.3333
 ```
 
 Full documentation [here](https://raw.githubusercontent.com/ambaker1/vutil/main/doc/vutil.pdf).
