@@ -1,9 +1,7 @@
 # Define version numbers
-set version 1.1.1
-set tin_version 1.0
-
+set version 2.0
 # Load required packages for testing
-package require tin $tin_version
+package require tin 1.0
 # For testing in OpenSees
 if {[info commands test] eq "test"} {
     rename test ops_test
@@ -12,43 +10,15 @@ tin import tcltest
 tin import assert from tin
 
 # Build files and load the package
-set config [dict create VERSION $version TIN_REQ $tin_version]
+set config [dict create VERSION $version]
 tin bake src build $config
 tin bake doc/template/version.tin doc/template/version.tex $config
 source build/vutil.tcl
 namespace import vutil::*
 
-tin import flytrap
-
-# Perform tests
-test local {
-    # Test to see if local variables are created
-} -body {
-    global a b c
-    set a 1
-    set b 2
-    set c 3
-    namespace eval ::foo {
-        local a b c
-        set a 4
-        set b 5
-        set c 6
-    }
-    proc ::foo::bar1 {} {
-        global a b c
-        list $a $b $c
-    }
-    proc ::foo::bar2 {} {
-        local a b c
-        list $a $b $c
-    }
-    list [::foo::bar1] [::foo::bar2]
-} -result {{1 2 3} {4 5 6}}
-
 test default1 {
     # The variable "a" does not exist. "default" sets it.
 } -body {
-    unset a
     default a 5
 } -result {5}
 
@@ -171,22 +141,6 @@ test tie-trace-count {
     llength [trace info variable a]
 } -result {1}
 
-test var_exists {
-    # Ensure that info exists and $var info exists are the same.
-} -body {
-    var new x
-    assert ![info exists $x]
-    assert ![$x info exists]
-    $x = 10
-    assert [info exists $x]
-    assert [$x info exists]
-    unset x
-    var new x
-    set $x 10
-    assert [info exists $x]
-    assert [$x info exists]
-} -result {}
-
 test obj_untie {
     # Object variable, with gc eliminated using "untie"
 } -body {
@@ -195,8 +149,8 @@ test obj_untie {
     set y $x
     $x = {hello}
     assert [$y] eq {hello}
-    unset $y
-    info exists $x
+    $y destroy
+    info object isa object $x
 } -result 0
 
 test obj_new {
@@ -228,7 +182,6 @@ test obj_ref_copy {
     ${::&}
 } -result {1 2 3}
 
-
 test obj_gc {
     # Ensure that objects are deleted inside procedures (garbage collection)
 } -body {
@@ -250,17 +203,15 @@ test obj_gc2 {
 } -result {hi}
 
 test obj_gc3 {
-    # Verify that unsetting object also destroys object.
+    # Verify that unsetting an object also destroys object.
 } -body {
     var new x {hello world}
     assert [info exists x]
     assert [info object isa object $x]
-    unset $x
-    assert [info exists x]
-    assert ![info object isa object $x]
+    set y $x
     unset x
-    assert ![info exists x]
-}
+    info object isa object $y
+} -result 0
 
 test obj_assignment {
     # Assign values
@@ -284,46 +235,24 @@ test obj_copy2 {
     $y
 } -result {hello world}
 
-test obj_copygc {
-    # Ensure that garbage collection is set up on copied object
-} -body {
-    set z $y
-    unset y; # Destroys object
-    info object isa object $z
-} -result {0}
-
-test obj_copy_error {
-    # Do not permit copying from blank variable
-} -body {
-    var new z
-    assert [catch {$x <- $z}] == 1; # z does not exist
-    assert [catch {$z --> x}] == 0; # overwrites x
-    $x info exists
-} -result {0}
-
-test obj_set {
-    # Ensure that the value can be set easily
-} -body {
-    set $x 10
-    $x
-} -result {10}
-
-test obj_dne {
-    # Create new object (does not exist)
-} -body {
-    var new obj1
-    puts [info exists $obj1]
-    list [$obj1 info] [info exists $obj1]
-} -result {{exists 0 type var} 0}
-
 test new_string {
-    # Test all features of "string" type
+    # Test features of the "string" type
 } -body {
     [new string string1] = {hello}
     assert {[$string1 length] == 5}
-    append $string1 { world}
+    $string1 append { world}
     $string1 info
-} -result {exists 1 length 11 type string value {hello world}}
+} -result {length 11 type string value {hello world}}
+
+test string_range {
+    # Test out the index and range features of the string type
+} -body {
+    new string x {hello world}
+    assert [$x @ 0] eq "h"
+    assert [$x @ end-4 end] eq "world"
+    assert [[$x @ 0 = H]] eq "Hello world"
+    assert [[$x @ end-4 end = "Moon"]] eq "Hello Moon" 
+} -result {}
 
 test string_create {
     # Assert that "create" is not an exported method
@@ -331,147 +260,32 @@ test string_create {
     catch {[type class string] create foo bar}
 } -result 1
 
-test new_list {
-    # Test all features of "list" type
-} -body {
-    [new list list1] = {hello world}
-    assert [$list1 length] == 2
-    $list1 @ 0 = "hey"
-    $list1 @ 1 = "there"
-    $list1 @ end+1 = "world"
-    assert [$list1 @ end] eq "world"
-    set a 5
-    $list1 @ end+1 := {$a + 1}
-    $list1 @@ 0 1 ::= {string totitle $@.}; # Range modification
-    assert [$list1 @@ end-1 end] eq {world 6}
-    $list1 info
-} -result {exists 1 length 4 type list value {Hey There world 6}}
-
-test new_dict {
-    # Test all features of the "dict" type
-} -body {
-    new dict d {a1 5 a2 6}
-    # dictObj set key ?key ...? value 
-    $d set b 50
-    $d set c 5
-    $d set d 1 2
-    $d set d 2 3
-    # dict info ?field?
-    assert [$d info] eq {exists 1 size 5 type dict value {a1 5 a2 6 b 50 c 5 d {1 2 2 3}}}
-    assert [$d info value] eq [$d]
-    # dict print 
-    $d print
-    set fid [open temp.txt w]
-    $d print $fid
-    close $fid
-    set fid [open temp.txt r]
-assert [read $fid] eq {a1 5
-a2 6
-b 50
-c 5
-d {1 2 2 3}
-}
-close $fid
-file delete temp.txt
-    # dictObj get ?key ...? 
-    assert [$d get a1] == 5
-    assert [$d get d 2] == 3
-    assert [catch {$d get e}]
-    # dictObj exists key ?key ...? 
-    assert [$d exists c]
-    assert ![$d exists e]
-    # dictObj unset key ?key ...? 
-    $d unset d 1
-    assert [$d get d] eq {2 3}
-    # dictObj keys ?globPattern? 
-    assert [$d keys] eq {a1 a2 b c d}
-    assert [$d keys a*] eq {a1 a2}
-    # dictObj values ?globPattern? 
-    assert [$d values] eq {5 6 50 5 {2 3}}
-    assert [$d values 5*] eq {5 50 5}
-    # dictObj size 
-    assert [$d size] == 5
-    assert [$d info size] == 5
-    # dictObj stats (dict info)
-    assert [$d stats] eq [dict info [$d]]
-    # dictObj replace ?key value ...? 
-    $d replace a1 4 a2 7 a3 10
-    assert [$d get a1] == 4
-    assert [$d get a2] == 7
-    assert [$d get a3] == 10
-    assert [$d size] == 6
-    # dictObj remove ?key ...? 
-    $d remove a3
-    assert ![$d exists a3]
-    assert [$d size] == 5
-    # dictObj merge ?dictionaryValue ...?
-    $d merge {a1 5 a2 {foo bar}} {a2 6} {foo bar}
-    assert [$d keys] eq {a1 a2 b c d foo}
-    assert [$d get a2] == 6
-    assert [$d get foo] eq bar
-    # dictObj append key ?string ...?
-    $d append foo ge
-    $d append a2 . 2 5
-    assert [$d get foo] eq barge
-    assert [$d get a2] == 6.25
-    # dictObj lappend key ?value ...? 
-    $d lappend d 3 9 4 10
-    assert [$d get d 4] == 10
-    # dictObj incr key ?increment? 
-    $d incr c
-    assert [$d get c] == 6
-    # dictObj update key varName ?key varName ...? body  
-    $d update foo string {set string [string toupper $string]}
-    assert [$d get foo] eq BARGE
-    # dictObj filter filterType arg ?arg ...?
-    #   dictObj filter key ?globPattern ...? 
-    #   dictObj filter script {keyVariable valueVariable} script 
-    #   dictObj filter value ?globPattern ...? 
-    [$d --> temp] filter key a*
-    assert [$temp keys] eq {a1 a2}
-    [$d --> temp] filter value B*
-    assert [$temp keys] eq foo
-    [$d --> temp] filter script {key value} {
-        expr {[llength $value] > 1}
-    }
-    assert [$temp keys] eq d
-    unset temp
-    # dictObj for {keyVariable valueVariable} body 
-    $d for {key value} {
-        if {$key eq "foo"} {
-            break
-        }
-    }
-    assert $value eq "BARGE"
-    # dictObj map {keyVariable valueVariable} body 
-    $d map {key value} {
-        set key [string toupper $key]
-        set value
-    }
-    assert [$d keys] eq {A1 A2 B C D FOO}
-    # dictObj with ?key ...? body 
-    $d with {
-        set FOO bar
-    }
-    assert [$d get FOO] eq "bar"
-    $d info
-} -result {exists 1 size 6 type dict value {A1 5 A2 6.25 B 50 C 6 D {2 3 3 9 4 10} FOO bar}}
-
 test new_float {
-    # Test all features of the "float" type
+    # Test basic features of the "float" type
 } -body {
     new float x
     $x := {2 + 2}
     assert {[$x] == 4}
     [new float a] := {[$x] - 2}; # Assures that it is being evaluated at uplevel.
     [new float b] <- [$a := {[$a] * 2}]
-    assert {[$b] == 4}
+    assert [$b] == 4
     [$x := {[$x] * ([$a] + 1)}] --> c
     $c info
-} -result {exists 1 type float value 20.0}
+} -result {type float value 20.0}
+
+test float_ops {
+    # Test additional assignment operators of the float type.
+} -body {
+    new float x 1.0
+    $x += 1.0; # 2.0
+    $x *= {[$.]}; # 4.0
+    $x -= 1; # 3.0
+    $x /= 2; # 1.5
+    $x
+} -result 1.5
 
 test new_int {
-    # Test all features of the "int" type
+    # Test basic features of the "int" type
 } -body {
     set values ""
     for {new int i 0} {[$i] < 10} {$i ++} {
@@ -481,14 +295,25 @@ test new_int {
     lappend values [[$i := {[$i] + [$i] / 2}]]
 } -result {0 1 2 3 4 5 6 7 8 9 10 15}
 
+test int_ops {
+    # Test additional assignment operators of the float type.
+} -body {
+    new int x 0
+    $x += 10; # 10
+    $x *= {[$.]}; # 100
+    $x -= 19; # 81
+    $x /= 9; # 9
+    $x
+} -result 9
+
 test var_ops {
     # Demonstrate features of object variable operators
 } -body {
     var new x; # Create blank variable x
     [$x --> y] = 5; # Copy x to y, and set to 5
     [var new z] <- [$x <- $y]; # Create z and set to x after setting x to y.
-    incr $z [$x]; # Increment z by value of x (5)
-    append $y [set $x 0]; # Append y the value of $x after setting x to 0
+    $z := {[$z] + [$x]}; # Increment z by value of x (5)
+    $y = [$y][[$x = 0]]; # Append y the value of $x after setting x to 0
     list [$x] [$y] [$z]
 } -result {0 50 10}
 
@@ -507,7 +332,7 @@ test new_bool {
 test isa_1 {
     # Test whether "isa" works
 } -body {
-    list [type isa bool $flag] [type isa list $flag] [type isa var $flag]
+    list [type isa bool $flag] [type isa float $flag] [type isa var $flag]
 } -result {1 0 1} 
 
 test isa_2 {
@@ -519,7 +344,7 @@ test isa_2 {
 test isa_3 {
     # Test whether "isa" works (check fail 2)
 } -body {
-    type isa list hi
+    type isa bool hi
 } -result {"hi" is not an object} -returnCodes 1 
 
 test var_print {
@@ -528,19 +353,19 @@ test var_print {
 var new x {Hello World}
 puts [$x info]
 $x print -nonewline
-} -output {exists 1 type var value {Hello World}
+} -output {type var value {Hello World}
 Hello World}
 
 test type_names {
     # Verify the names of the types
 } -body {
     lsort [type names]
-} -result {bool dict float int list string var}
+} -result {bool float int string var}
 
 test type_exists {
     # Verify that "exists" works
 } -body {
-    list [type exists dict] [type exists foo]
+    list [type exists bool] [type exists foo]
 } -result {1 0}
 
 test type_class_var {
@@ -552,8 +377,8 @@ test type_class_var {
 test type_class_new {
     # Check the class for types created with "type new"
 } -body {
-    type class dict
-} -result {::vutil::type.dict}
+    type class string
+} -result {::vutil::type.string}
 
 test type_create_traces {
     # Ensure that you can create a type in a specific namespace and have 
@@ -574,17 +399,17 @@ test assert&return {
 } -body {
     # Procedures can take as input object variables, create objects that are 
     # cleaned up by garbage collection, yet still pass a copy of the object.
-    proc combineLists {x y} {
-        type assert list $x
-        type assert list $y
-        new list z [concat [$x] [$y]]
+    proc add {x y} {
+        type assert float $x
+        type assert float $y
+        new float z [expr {[$x] + [$y]}]
         return [$z --> &]
     }
-    new list list1 {1 2 3}
-    new list list2 {4 5 6}
-    [combineLists $list1 $list2] --> list3
-    $list3
-} -result {1 2 3 4 5 6}
+    new float a 1.0
+    new float b 2.0
+    [add $a $b] --> c
+    $c
+} -result {3.0}
 
 test var& {
     # Example in documentation for passing an object variable from proc
@@ -597,11 +422,11 @@ test var& {
     $bar
 } -result {hello world}
 
-test gcoo_superclass1 {
-    # Test example of gcoo superclass
+test GC1 {
+    # Test example of GC superclass
 } -body {
     oo::class create veggie {
-        superclass ::vutil::gcoo
+        superclass ::vutil::GC
         variable veggieType veggieCount
         constructor {refName type count} {
             set veggieType $type
@@ -634,12 +459,12 @@ test gcoo_superclass1 {
     $& count
 } -result {8}
 
-test gcoo_superclass2 {
-    # Test example of gcoo superclass
+test GC2 {
+    # Test example of GC superclass
 } -body {
-    # Create simple container class that is subclass of ::vutil::gcoo
+    # Create simple container class that is subclass of ::vutil::GC
     oo::class create container {
-        superclass ::vutil::gcoo
+        superclass ::vutil::GC
         variable myValue
         constructor {refName value} {
             set myValue $value
@@ -657,12 +482,12 @@ test gcoo_superclass2 {
     $x value
 } -result {hello world}
 
-test gcoo_superclass3 {
+test GC3 {
     # Another example, a bit more sophisticated
 } -body {
-    # Create class that is subclass of ::vutil::gcoo
+    # Create class that is subclass of ::vutil::GC
     oo::class create count {
-        superclass ::vutil::gcoo
+        superclass ::vutil::GC
         variable i
         constructor {refName value} {
             set i $value
@@ -688,156 +513,24 @@ test gcoo_superclass3 {
     llength [info class instances count]
 } -result {2}
 
-test refsub {
+test RefSub {
     # Make sure that the reference substitution works
 } -body {
     unset x y z
-    new list x {1 2 3}
-    new list xy(1) {2 3 4}
-    new list ::z(hi_there) {a b c}
-    new list & {10 20 30}
-    lassign [::vutil::refsub {$@x $@xy(1) $@::z(hi_there) $@& $@. $@@foo}] body refNames
+    new var x {1 2 3}
+    new var xy(1) {2 3 4}
+    new var ::z(hi_there) {a b c}
+    new var & {10 20 30}
+    lassign [::vutil::RefSub {$@x $@xy(1) $@::z(hi_there) $@& $@. $@@foo}] body refNames
     assert $refNames eq {::& ::. x xy(1) ::z(hi_there)}; # $@& and $@. first
     set body
-} -result {$::vutil::at(x) $::vutil::at(xy(1)) $::vutil::at(::z(hi_there)) $::vutil::at(::&) $::vutil::at(::.) $@foo}
-
-test leval {
-    # Check that the list evaluation method works
-} -body {
-    new list x {1 2 3}
-    leval {lappend $x $@x}
-    $x
-} -result {1 2 3 1 2 3}
-
-test lexpr {
-    # Try out lexpr
-} -body {
-    new list x {1 2 3}
-    $x := {double($@x)}
-    $x
-} -result {1.0 2.0 3.0}
-
-test lexpr_error1 {
-    # Verify that it will throw an error if a ref dne
-} -body {
-    new list x {1 2 3}
-    $x := {$@fooey + 1}
-} -result {"fooey" does not exist} -returnCodes error
-
-test lexpr_error2 {
-    # Verify that it will throw an error if a ref is an array
-} -body {
-    array set fooey ""
-    new list x {1 2 3}
-    $x := {$@fooey + 1}
-} -result {"fooey" is an array} -returnCodes error
-
-test lexpr_nested {
-    # Nexted lexpr statement
-} -body {
-    new list x {1 2 3}
-    leval {
-        new list & [lrepeat $@x $@x]
-        lexpr {$@@& * 1.0}
-    } --> y
-    $y
-} -result {1.0 {2.0 2.0} {3.0 3.0 3.0}}
-
-test leval_proc {
-    # Create proc for returning list object
-} -body {
-    unset z
-    proc zip {x y} {
-        type assert list $x
-        type assert list $y
-        leval {list $@x $@y} --> &
-        return $&
-    }
-    new list x {1 2 3}
-    new list y {4 5 6}
-    [zip $x $y] --> z
-    assert [$z] eq {{1 4} {2 5} {3 6}}
-    leval {new list & $@z; lexpr {$@@& + 2.0}}; # Nested list
-} -result {{3.0 6.0} {4.0 7.0} {5.0 8.0}}
-
-test example1 {
-    # Old way of doing list math (from blog post)
-} -body {
-    set x {1 2 3}
-    set y [lmap xi $x {expr {$xi * 2}}]
-    set y
-} -result {2 4 6}
-
-test example2 {
-    # New way of doing list math (from blog post)
-} -body {
-new list x {1 2 3}
-lexpr {$@x * 2} --> y
-$y
-} -result {2 4 6}
-
-test example3 {
-    # leval stuff From blog post
-} -body {
-    new list a {hello world}
-    $a = [leval {string totitle $@a}]
-    $a; # prints "Hello World"
-} -result {Hello World}
-
-test example4 {
-    # Matrix example from blog post
-} -body {
-    new list IntegerMatrix {{1 2 3} {4 5 6} {7 8 9}}
-    leval {
-        new list row $@IntegerMatrix
-        lexpr {double($@@row)}
-    } --> DoubleMatrix
-    $DoubleMatrix @ 0; # prints "1.0 2.0 3.0"
-} -result {1.0 2.0 3.0}
+} -result {${::@(x)} ${::@(xy(1))} ${::@(::z(hi_there))} ${::@(::&)} ${::@(::.)} $@foo}
 
 test newvalue {
     # Use the {} refName to return just the value
 } -body {
     new float {} 3
 } -result {3.0}
-
-test crossprod {
-    # Do some crazy math
-} -body {
-    # Cross-product, the new way!
-    proc crossprod {a b} {
-        new list a $a
-        new list b $b
-        new list c {}
-        $c @ 0 := {[$a @ 1]*[$b @ 2] - [$a @ 2]*[$b @ 1]}
-        $c @ 1 := {[$a @ 2]*[$b @ 0] - [$a @ 0]*[$b @ 2]}
-        $c @ 2 := {[$a @ 0]*[$b @ 1] - [$a @ 1]*[$b @ 0]}
-        return [$c]
-    }
-    crossprod {3 -3 1} {4 9 2}
-} -result {-15 -2 39}
-
-test list_eval {
-    # Ensure that eval operator is working for lists
-} -body {
-    new list x {a b c}
-    $x ::= {string toupper $@.}
-    $x @ 0 ::= {string tolower $@.}
-    $x
-} -result {a B C}
-
-test add_lists {
-    # Create prodecure to add lists together
-} -body {
-    proc add {a b} {
-        type assert list $a
-        type assert list $b
-        lexpr {$@a + $@b}
-    }
-    new list A {1 2 3}
-    new list B {2.0 2.0 4.0}
-    add $A $B
-} -result {3.0 4.0 7.0}
 
 test SelfRef {
     # Ensure that self-referencing works
@@ -854,38 +547,6 @@ new float y 6
 $y := {[$.] + [[$x := {[$.] + 5}]] + [$.]}; # 6.0 + 15.0 + 6.0
 $y
 } -result {27.0}
-
-test ListRefNested {
-    # Ensure that $@. can be nested
-} -body {
-new list x {10.0}
-new list y {1.0 2.0}
-$y := {$@. + [[$x := {$@@. + 5}]] + $@.}; # 1.0 + 15.0 + 1.0, 2.0 + 20.0 + 2.0
-$y
-} -result {17.0 24.0}
-
-test lop {
-    # Test out lop features
-} -body {
-    assert [lop {1 2 3} + 1] eq {2 3 4}
-    assert [lop {1 0 1} !] eq {0 1 0}
-    assert [lop 0 + {*}{1 2 3 4}] eq 10
-    new list x {1 2 3}
-    [$x .= {+ 1}]
-} -result {2 3 4}
-
-test lexpr_self {
-    # Verify that lexpr works with self-referencing
-} -body {
-    [$x := {$@. + 5}]
-} -result {7 8 9}
-
-test leval_self {
-    # Verify that leval works
-} -body {
-    [$x ::= {string cat A $@.}]
-} -result {A7 A8 A9}
-
 
 # Check number of failed tests
 set nFailed $::tcltest::numTests(Failed)
