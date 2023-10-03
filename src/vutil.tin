@@ -18,34 +18,15 @@ namespace eval ::vutil {
     # (::+|\w+)+            Matches alphanumeric namespace variables
     # (\(\w+\))?            Matches alphanumeric array indices
     # Exported Commands
-    namespace export local; # Access local namespace variables (like global)
     namespace export default; # Set a variable if it does not exist
     namespace export lock unlock; # Hard set a Tcl variable
     namespace export tie untie; # Tie a Tcl variable to a Tcl object
     namespace export var $& $.; # Object variable class
-    namespace export type new; # Type system
+    namespace export type new; # Object variable type system
 }
 
-# VARIOUS VARIABLE UTILITIES
+# BASIC VARIABLE UTILITIES
 ################################################################################
-
-# local --
-#
-# Define variables local to the namespace of the procedure or code.
-# Simply calls "variable" multiple times in the calling scope.
-#
-# Syntax:
-# local $varName ...
-#
-# Arguments:
-# varName       Variable to access within namespace.
-
-proc ::vutil::local {args} {
-    foreach varName $args {
-        uplevel 1 [list variable $varName]
-    }
-    return
-}
 
 # default --
 #
@@ -67,9 +48,6 @@ proc ::vutil::default {varName value} {
     }
     return $value
 }
-
-# READ-ONLY VARIABLES
-################################################################################
 
 # lock --
 #
@@ -536,10 +514,6 @@ proc ::vutil::IsRefName {refName} {
         if {![info object class $objName [info object class [self]]]} {
             return -code error "\"$objName\" not of same class as \"[self]\""
         }
-        # Set the object info array equal to the other one.
-        if {![$objName info exists]} {
-            return -code error "can't read \"$objName\", no such variable"
-        }
         array set "" [$objName info]
         return [self]
     }
@@ -962,6 +936,8 @@ proc ::vutil::new {type refName args} {
 # --        Decrement by 1
 # +=        Increment by a value
 # -=        Decrement by a value
+# *=        Multiply by a value
+# /=        Divide by a value
 
 ::vutil::type new int {
     constructor {refName {value 0}} {
@@ -987,13 +963,19 @@ proc ::vutil::new {type refName args} {
     method -= {expr} {
         tailcall my := "$(value) - ($expr)"
     }
-    export ++ -- += -=
+    method *= {expr} {
+        tailcall my := "$(value) * ($expr)"
+    }
+    method /= {expr} {
+        tailcall my := "$(value) / ($expr)"
+    }
+    export ++ -- += -= *= /=
 }
 
 # new float --
 #
 # Numeric subtype. Forces double-precision floating point value.
-# Default 0.0.
+# Default value 0.0
 #
 # Additional methods:
 # +=        Add the result of an expression
