@@ -50,7 +50,6 @@ puts $a
 \section{Variable Locks}
 The command \cmdlink{lock} uses Tcl variable traces to make a read-only variable. 
 If attempting to modify a locked variable, it will throw a warning, but not an error.
-You can lock array elements, but not an entire array.
 
 \begin{syntax}
 \command{lock} \$varName <\$value>
@@ -85,13 +84,15 @@ failed to modify "a": read-only
 \end{lstlisting}
 \end{example}
 
+Note: You can lock array elements, but not an entire array.
+
 \clearpage
 
 \section{Variable-Object Ties}
 As of Tcl version 8.6, there is no garbage collection for Tcl objects, they have to be removed manually with the ``destroy'' method. 
 The command \cmdlink{tie} is a solution for this problem, using variable traces to destroy the corresponding object when the variable is unset or modified. 
 For example, if an object is tied to a local procedure variable, the object will be destroyed when the procedure returns.
-You can tie array elements, but not an entire array.
+
 
 \begin{syntax}
 \command{tie} \$refName <\$object>
@@ -126,6 +127,8 @@ $b hi; # throws error
 invalid command name "::bar"
 \end{lstlisting}
 \end{example}
+
+Note: You can tie array elements, but not an entire array, and you cannot tie a locked variable.
 \clearpage
 \subsection{Reference Variables}
 Valid reference variables for the \cmdlink{tie} command must match the following regular expression:
@@ -143,9 +146,9 @@ This shared reference, regardless of scope, can be accessed with the command ``\
 
 \subsubsection{Reference Parser API}
 The command \cmdlink{::vutil::RefSub}, which performs ``\texttt{\$@ref}'' substitution on a given string, returning the updated string and all matched reference names. 
-For example, ``\texttt{\$@ref}'' is converted to ``\texttt{\$\{::@(ref)\}}''.
+For example, ``\texttt{\$@ref}'' is converted to ``\texttt{\$\{::@(ref)\}}'': an element of the global array variable ``\texttt{@}''.
 To escape a reference, especially for nested substitution, simply add more ``\texttt{@}'' symbols, like ``\texttt{\$@@ref}''.
-This command is not exported, and is intended for use by developers.
+This command is not exported, as it is intended for use by developers.
 \begin{syntax}
 \command{::vutil::RefSub} \$string
 \end{syntax}
@@ -213,7 +216,7 @@ The TclOO class \cmdlink{var} is a subclass of ``\texttt{::vutil::GC}'' that act
 \command{var} new \$refName <\$value>
 \end{syntax}
 \begin{args}
-\$refName & Name of reference variable. \\
+\$refName & Name of reference variable for garbage collection. \\
 \$value & Value to set object variable to. Default blank.
 \end{args}
 
@@ -265,7 +268,7 @@ The operator methods ``\texttt{\methodlink[0]{var}{.=}}'', ``\texttt{\methodlink
 \end{syntax}
 \begin{args}
 \$oper & Tcl math operator and additional mathop arguments, i.e. \texttt{"+ 5"}. \\
-\$expr & Tcl expression to evaluate. \\
+\$expr & Tcl expression to evaluate, passing input through the Tcl \textit{expr} command. \\
 \$body & Tcl script to evaluate.
 \end{args}
 
@@ -278,7 +281,7 @@ Similarly, the operators ``\texttt{\methodlink[0]{var}{:=}}'' and ``\texttt{\met
 \$arg ... & Arguments for object.
 \end{args}
 
-Check out the example below for some examples of how you can use these features to modify variables. 
+The example below demonstrates how you can use these features to manipulate object variables.
 \begin{example}{Advanced object variable operators}
 \begin{lstlisting}
 var new x 5.0; # Create variable $x
@@ -306,7 +309,7 @@ Fields ``type'' and ``value'' are standard.
 \end{args}
 
 \subsection{Printing an Object Variable Value}
-The method \methodlink[0]{var}{print} is a alternative way to print the value of the variable to screen.
+The method \methodlink[0]{var}{print} prints the value of the variable to screen or file.
 \begin{syntax}
 \method{var}{print} <-nonewline> <\$channelID>
 \end{syntax}
@@ -366,7 +369,7 @@ If creating a type class with the subcommand \subcmdlink[0]{type}{new}, the resu
 
 Note: The value of the object variable is stored in the blank array name ``value''. 
 The blank array is used to store all the object variable properties, and is what is returned with the method ``info''.
-By default, from the superclass ``\texttt{::vutil::var}'', there are three properties: (value), (exists), and (type).
+By default, from the superclass ``\texttt{::vutil::var}'', there are two properties: (value) and (type).
 
 \clearpage
 \subsection{Type Queries}
@@ -473,7 +476,7 @@ If indexing, it will return the value, and if modifying, it will return the obje
 \$newstring & Value to replace with. Default just returns the string index/range.
 \end{args}
 
-\begin{example}{Creating a new \subcmdlink[0]{new}{string} object variable}
+\begin{example}{String type example}
 \begin{lstlisting}
 new string x hello
 $x append { world}
@@ -489,7 +492,7 @@ Hello world
 
 \clearpage
 \subsection{Type ``bool'' (boolean)}
-The type ``\subcmdlink[0]{new}{bool}'' validates that the input is a valid boolean, passing input through the Tcl \textit{::tcl::mathfunc::bool} command.
+The type ``\subcmdlink[0]{new}{bool}'' validates input by passing it through the Tcl \textit{::tcl::mathfunc::bool} command, which ensures that the input is a valid boolean (0 or 1).
 \begin{syntax}
 \subcommand{new}{bool} \$refName <\$value>
 \end{syntax}

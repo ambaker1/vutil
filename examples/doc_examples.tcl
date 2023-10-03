@@ -79,7 +79,7 @@ new var a
 puts [$a info]
 [$a = foobar] print
 
-puts "Creating a new string object variable"
+puts "String type example"
 new string x hello
 $x append { world}
 puts [$x length]
