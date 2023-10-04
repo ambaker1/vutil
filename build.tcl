@@ -1,5 +1,5 @@
 # Define version numbers
-set version 2.0
+set version 2.1
 # Load required packages for testing
 package require tin 1.0
 # For testing in OpenSees
@@ -329,6 +329,286 @@ test new_bool {
     }
 } -result {hey}
 
+test new_list {
+    # Test all features of "list" type
+} -body {
+    [new list list1] = {hello world}
+    assert [$list1 length] == 2
+    $list1 @ 0 = "hey"
+    $list1 @ 1 = "there"
+    $list1 @ end+1 = "world"
+    assert [$list1 @ end] eq "world"
+    set a 5
+    $list1 @ end+1 := {$a + 1}
+    $list1 @@ 0 1 ::= {string totitle $@.}; # Range modification
+    assert [$list1 @@ end-1 end] eq {world 6}
+    $list1 info
+} -result {length 4 type list value {Hey There world 6}}
+
+test lop {
+    # Test out lop features
+} -body {
+    assert [lop {1 2 3} + 1] eq {2 3 4}
+    assert [lop {1 0 1} !] eq {0 1 0}
+    assert [lop 0 + {*}{1 2 3 4}] eq 10
+    new list x {1 2 3}
+    [$x .= {+ 1}]
+} -result {2 3 4}
+
+test lexpr_self {
+    # Verify that lexpr works with self-referencing
+} -body {
+    [$x := {$@. + 5}]
+} -result {7 8 9}
+
+test leval_self {
+    # Verify that leval works
+} -body {
+    [$x ::= {string cat A $@.}]
+} -result {A7 A8 A9}
+
+test crossprod {
+    # Do some crazy math
+} -body {
+    # Cross-product, the new way!
+    proc crossprod {a b} {
+        new list a $a
+        new list b $b
+        new list c {}
+        $c @ 0 := {[$a @ 1]*[$b @ 2] - [$a @ 2]*[$b @ 1]}
+        $c @ 1 := {[$a @ 2]*[$b @ 0] - [$a @ 0]*[$b @ 2]}
+        $c @ 2 := {[$a @ 0]*[$b @ 1] - [$a @ 1]*[$b @ 0]}
+        return [$c]
+    }
+    crossprod {3 -3 1} {4 9 2}
+} -result {-15 -2 39}
+
+test list_eval {
+    # Ensure that eval operator is working for lists
+} -body {
+    new list x {a b c}
+    $x ::= {string toupper $@.}
+    $x @ 0 ::= {string tolower $@.}
+    $x
+} -result {a B C}
+
+test add_lists {
+    # Create prodecure to add lists together
+} -body {
+    proc add {a b} {
+        type assert list $a
+        type assert list $b
+        lexpr {$@a + $@b}
+    }
+    new list A {1 2 3}
+    new list B {2.0 2.0 4.0}
+    add $A $B
+} -result {3.0 4.0 7.0}
+
+test lappend {
+    # Check that the list evaluation method works
+} -body {
+    new list x {1 2 3}
+    $x append {*}[$x]
+    $x
+} -result {1 2 3 1 2 3}
+
+test lexpr {
+    # Try out lexpr
+} -body {
+    new list x {1 2 3}
+    $x := {double($@x)}
+    $x
+} -result {1.0 2.0 3.0}
+
+test lexpr_error1 {
+    # Verify that it will throw an error if a ref dne
+} -body {
+    new list x {1 2 3}
+    $x := {$@fooey + 1}
+} -result {"fooey" does not exist} -returnCodes error
+
+test lexpr_error2 {
+    # Verify that it will throw an error if a ref is an array
+} -body {
+    array set fooey ""
+    new list x {1 2 3}
+    $x := {$@fooey + 1}
+} -result {"fooey" is an array} -returnCodes error
+
+test lexpr_nested {
+    # Nexted lexpr statement
+} -body {
+    new list x {1 2 3}
+    leval {
+        new list & [lrepeat $@x $@x]
+        lexpr {$@@& * 1.0}
+    } --> y
+    $y
+} -result {1.0 {2.0 2.0} {3.0 3.0 3.0}}
+
+test leval_proc {
+    # Create proc for returning list object
+} -body {
+    unset z
+    proc zip {x y} {
+        type assert list $x
+        type assert list $y
+        leval {list $@x $@y} --> &
+        return $&
+    }
+    new list x {1 2 3}
+    new list y {4 5 6}
+    [zip $x $y] --> z
+    assert [$z] eq {{1 4} {2 5} {3 6}}
+    leval {new list & $@z; lexpr {$@@& + 2.0}}; # Nested list
+} -result {{3.0 6.0} {4.0 7.0} {5.0 8.0}}
+
+test example1 {
+    # Old way of doing list math (from blog post)
+} -body {
+    set x {1 2 3}
+    set y [lmap xi $x {expr {$xi * 2}}]
+    set y
+} -result {2 4 6}
+
+test example2 {
+    # New way of doing list math (from blog post)
+} -body {
+new list x {1 2 3}
+lexpr {$@x * 2} --> y
+$y
+} -result {2 4 6}
+
+test example3 {
+    # leval stuff From blog post
+} -body {
+    new list a {hello world}
+    $a = [leval {string totitle $@a}]
+    $a; # prints "Hello World"
+} -result {Hello World}
+
+test example4 {
+    # Matrix example from blog post
+} -body {
+    new list IntegerMatrix {{1 2 3} {4 5 6} {7 8 9}}
+    leval {
+        new list row $@IntegerMatrix
+        lexpr {double($@@row)}
+    } --> DoubleMatrix
+    $DoubleMatrix @ 0; # prints "1.0 2.0 3.0"
+} -result {1.0 2.0 3.0}
+
+test new_dict {
+    # Test all features of the "dict" type
+} -body {
+    new dict d {a1 5 a2 6}
+    # dictObj set key ?key ...? value 
+    $d set b 50
+    $d set c 5
+    $d set d 1 2
+    $d set d 2 3
+    # dict info ?field?
+    assert [$d info] eq {size 5 type dict value {a1 5 a2 6 b 50 c 5 d {1 2 2 3}}}
+    assert [$d info value] eq [$d]
+    # dict print 
+    $d print
+    set fid [open temp.txt w]
+    $d print $fid
+    close $fid
+    set fid [open temp.txt r]
+assert [read $fid] eq {a1 5
+a2 6
+b 50
+c 5
+d {1 2 2 3}
+}
+close $fid
+file delete temp.txt
+    # dictObj get ?key ...? 
+    assert [$d get a1] == 5
+    assert [$d get d 2] == 3
+    assert [catch {$d get e}]
+    # dictObj exists key ?key ...? 
+    assert [$d exists c]
+    assert ![$d exists e]
+    # dictObj unset key ?key ...? 
+    $d unset d 1
+    assert [$d get d] eq {2 3}
+    # dictObj keys ?globPattern? 
+    assert [$d keys] eq {a1 a2 b c d}
+    assert [$d keys a*] eq {a1 a2}
+    # dictObj values ?globPattern? 
+    assert [$d values] eq {5 6 50 5 {2 3}}
+    assert [$d values 5*] eq {5 50 5}
+    # dictObj size 
+    assert [$d size] == 5
+    assert [$d info size] == 5
+    # dictObj stats (dict info)
+    assert [$d stats] eq [dict info [$d]]
+    # dictObj replace ?key value ...? 
+    $d replace a1 4 a2 7 a3 10
+    assert [$d get a1] == 4
+    assert [$d get a2] == 7
+    assert [$d get a3] == 10
+    assert [$d size] == 6
+    # dictObj remove ?key ...? 
+    $d remove a3
+    assert ![$d exists a3]
+    assert [$d size] == 5
+    # dictObj merge ?dictionaryValue ...?
+    $d merge {a1 5 a2 {foo bar}} {a2 6} {foo bar}
+    assert [$d keys] eq {a1 a2 b c d foo}
+    assert [$d get a2] == 6
+    assert [$d get foo] eq bar
+    # dictObj append key ?string ...?
+    $d append foo ge
+    $d append a2 . 2 5
+    assert [$d get foo] eq barge
+    assert [$d get a2] == 6.25
+    # dictObj lappend key ?value ...? 
+    $d lappend d 3 9 4 10
+    assert [$d get d 4] == 10
+    # dictObj incr key ?increment? 
+    $d incr c
+    assert [$d get c] == 6
+    # dictObj update key varName ?key varName ...? body  
+    $d update foo string {set string [string toupper $string]}
+    assert [$d get foo] eq BARGE
+    # dictObj filter filterType arg ?arg ...?
+    #   dictObj filter key ?globPattern ...? 
+    #   dictObj filter script {keyVariable valueVariable} script 
+    #   dictObj filter value ?globPattern ...? 
+    [$d --> temp] filter key a*
+    assert [$temp keys] eq {a1 a2}
+    [$d --> temp] filter value B*
+    assert [$temp keys] eq foo
+    [$d --> temp] filter script {key value} {
+        expr {[llength $value] > 1}
+    }
+    assert [$temp keys] eq d
+    unset temp
+    # dictObj for {keyVariable valueVariable} body 
+    $d for {key value} {
+        if {$key eq "foo"} {
+            break
+        }
+    }
+    assert $value eq "BARGE"
+    # dictObj map {keyVariable valueVariable} body 
+    $d map {key value} {
+        set key [string toupper $key]
+        set value
+    }
+    assert [$d keys] eq {A1 A2 B C D FOO}
+    # dictObj with ?key ...? body 
+    $d with {
+        set FOO bar
+    }
+    assert [$d get FOO] eq "bar"
+    $d info
+} -result {size 6 type dict value {A1 5 A2 6.25 B 50 C 6 D {2 3 3 9 4 10} FOO bar}}
+
 test isa_1 {
     # Test whether "isa" works
 } -body {
@@ -360,7 +640,7 @@ test type_names {
     # Verify the names of the types
 } -body {
     lsort [type names]
-} -result {bool float int string var}
+} -result {bool dict float int list string var}
 
 test type_exists {
     # Verify that "exists" works

@@ -113,3 +113,71 @@ proc hmean {x y} {
     return [$z]
 }
 puts [hmean 1 2]; # 1.3333
+
+puts "List example"
+new list x foo
+$x append bar
+puts [$x info]
+
+puts "Element-wise operations"
+# Primative variable method
+set x {1 2 3}
+set x [lop $x * 2]
+puts $x
+# Object variable method
+new list x {1 2 3}
+$x .= {* 2}
+$x print
+
+puts "Nested list operations"
+# Primative variable method
+set x {1 2 3}
+set x [lop [lop [lop $x + 1] * 2] - 3]
+puts $x
+# Object variable method
+new list x {1 2 3}
+[[$x .= {+ 1}] .= {* 2}] .= {- 3}
+$x print
+
+puts "Element-wise expressions"
+new list x {1 2 3}
+new list y {4 5 6}
+lexpr {$@x + $@y} --> z
+$z := {double($@z)}
+$z print
+
+puts "Zip a list together"
+new list list1 {a b c d}
+new list list2 {1 2 3 4}
+leval {list $@list1 $@list2} --> zipped
+$zipped ::= {string toupper $@.}
+$zipped print
+
+puts "List indexing"
+new list list1 ""
+$list1 @ 0 = "hey"
+$list1 @ 1 = "there"
+$list1 @ end+1 = "world"
+set a 5
+$list1 @ end+1 := {$a * 2}
+$list1 @@ 0 1 ::= {string totitle $@.}
+$list1 print
+
+puts "Dictionary example"
+# Create dictionary record
+new dict record {
+    name {John Doe}
+    address {
+        streetAddress {123 Main Street}
+        city {New York}
+    }
+    phone {555-1234} 
+}
+# Get values
+puts [$record size]; # Number of keys (3)
+puts [$record get name]; # John Doe
+# Set/unset and get
+$record set address street [$record get address streetAddress]
+$record unset address streetAddress
+puts [$record get address street]; # 123 Main Street
+puts [$record exists address streetAddress]; # 0

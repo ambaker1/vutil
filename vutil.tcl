@@ -23,6 +23,7 @@ namespace eval ::vutil {
     namespace export tie untie; # Tie a Tcl variable to a Tcl object
     namespace export var $& $.; # Object variable class
     namespace export type new; # Object variable type system
+    namespace export lop lexpr leval; # List utilities
 }
 
 # BASIC VARIABLE UTILITIES
@@ -1005,6 +1006,348 @@ proc ::vutil::new {type refName args} {
     export += -= *= /=
 }
 
+# new list --
+#
+# Almost everything is a list. Asserts that input is a list.
+# This data type also has "length", "@", and "@@" methods.
+#
+# Additional methods:
+# length    list length (llength)
+# append    list appending (lappend)
+# @         list index/set (lindex/lset)
+# @@        list range/replace (lrange/lreplace)
+
+::vutil::type new list {
+    # Modify API for lists
+    method ValidateValue {value} {
+        return [list {*}$value]
+    }
+    method UpdateFields {} {
+        set (length) [my length]
+        next
+    }
+    method GetOpValue {op args} {
+        ::vutil::lop [my GetValue] $op {*}$args
+    }
+    method GetEvalValue {body {level 1}} {
+        next [list ::vutil::leval $body] $level
+    }
+    
+    # Add method for length
+    method length {} {
+        llength [my GetValue]
+    }
+    # Add method for appending values to list
+    method append {args} {
+        lappend (value) {*}$args
+        return [self]
+    }
+    
+    # @ --
+    #
+    # Method to get or set a value in a list.
+    #
+    # Syntax:
+    # $list @ ?$i ...? ?$op $arg?
+    #
+    # Arguments:
+    # i ...     Indices
+    # op        Assignment operator = .= := ::=
+    # arg       Input for assignment operator.
+    
+    method @ {args} {
+        # Deal with assignment case
+        if {[lindex $args end-1] in {= .= := ::=}} {
+            # $list @ $i ?$i ...? $op $arg
+            # Interpret input
+            set idx [lrange $args 0 end-2]
+            set op [lindex $args end-1]
+            set arg [lindex $args end]
+            # Switch for method
+            if {$op eq "="} {
+                set value $arg
+            } else {
+                # Create temporary list object for assignment
+                ::vutil::new list temp [list [lindex [my GetValue] {*}$idx]]
+                uplevel 1 [list $temp $op $arg]
+                set value [lindex [$temp] 0]
+            }
+            # Assign to object value and return self
+            lset (value) {*}$idx $value
+            return [self]
+        }
+        # Default case (fetch value)
+        # $list @ ?$i ...?
+        return [lindex [my GetValue] {*}$args]
+    }
+    export @
+    
+    # @@ --
+    #
+    # Method to get or set a range of values in a list, using lrange & lreplace.
+    #
+    # Syntax:
+    # $list @@ $first $last ?$op $arg?
+    #
+    # Arguments:
+    # first     First index
+    # last      Last index
+    # op        Assignment operator = .= := ::=
+    # arg       Input for assignment operator.
+    
+    method @@ {first last args} {
+        # Switch for input type
+        if {[llength $args] == 0} {
+            # $list @@ $first $last
+            return [lrange [my GetValue] $first $last]
+        } elseif {[llength $args] == 2} {
+            # $list @@ $first $last $op $arg
+            # Interpret input
+            set indices [lrange $args 0 end-2]
+            set op [lindex $args end-1]
+            set arg [lindex $args end]
+            # Switch for op, and get replacement value.
+            if {$op eq "="} {
+                set value $arg
+            } elseif {$op in {.= := ::=}} {
+                # Create temporary list object for assignment
+                ::vutil::new list temp [lrange [my GetValue] $first $last]
+                uplevel 1 [list $temp $op $arg]; # perform operation
+                set value [$temp]
+            } else {
+                return -code error "unknown option \"$op\""
+            }
+            # Assign to object value and return self
+            set (value) [lreplace [my GetValue] $first $last {*}$value]
+            return [self]
+        } else {
+            return -code error "wrong # args: should be\
+                    \"listObj @@ first last ?op arg?\""
+        }
+    }
+    export @@
+}
+
+# leval --
+# 
+# Perform eval, but with list objects using @ref syntax
+#
+# Syntax:
+# leval $body <$list> <"-->" refName>
+#
+# Arguments:
+# body          Body to evaluate, using $@refs for list references.
+# refName       Reference name to copy to. Default blank to return value.
+
+proc ::vutil::leval {body args} {
+    # Interpret input
+    set args [lassign [GetRefName {*}$args] refName]
+    if {[llength $args] > 1} {
+        return -code error "wrong # args: should be\
+                \"leval body ?list? ?--> refName?\""
+    } elseif {[llength $args] == 1} {
+        # Create temporary list object to refer to.
+        new list temp [lindex $args 0]
+        uplevel 1 [list $temp ::= $body]; # Calls leval
+        tailcall new list $refName [$temp]
+    }
+    # Normal case (no input list)
+    # Perform @ substitution and get names of substituted variables
+    lassign [RefSub $body] body subNames
+    # Get variable mapping
+    set varMap ""
+    set length -1
+    foreach subName $subNames {
+        # Validate user input
+        upvar 1 $subName subVar
+        if {![info exists subVar]} {
+            return -code error "\"$subName\" does not exist"
+        }
+        if {[array exists subVar]} {
+            return -code error "\"$subName\" is an array"
+        }
+        type assert list $subVar
+        # Validate list lengths
+        if {$length == -1} {
+            set length [$subVar length]
+        } elseif {[$subVar length] != $length} {
+            return -code error "incompatible list lengths"
+        }
+        lappend varMap ::@($subName) [$subVar]
+    }
+    # Handle case with no list references (normal eval)
+    if {$length == -1} {
+        tailcall new list $refName [uplevel 1 $body]
+    }
+    # Handle case with list references (call lmap)
+    try {
+        set oldRefs [array get ::@]
+        array unset ::@
+        set list [uplevel 1 [list lmap {*}$varMap $body]]
+    } finally {
+        array unset ::@
+        array set ::@ $oldRefs
+    }
+    # Create the new list
+    tailcall new list $refName $list  
+}
+
+# lexpr --
+# 
+# leval, but for math
+#
+# Syntax:
+# lexpr $expr <$list> <"-->" refName>
+#
+# Arguments:
+# expr          Expression, using $@refs for list references
+# refName       Reference name to copy to. Default blank to return value
+
+proc ::vutil::lexpr {expr args} {
+    # Check arity
+    if {[llength $args] > 3} {
+        return -code error "wrong # args: should be\
+                \"lexpr expr ?list? ?--> refName?\""
+    }
+    tailcall leval [list expr $expr] {*}$args
+}
+
+# lop --
+#
+# Perform simple math operations on a list
+#
+# Syntax:
+# lop $list $op $arg...
+#
+# Arguments:
+# list          List value to map operation over
+# op            Math op (::tcl::mathop namespace commands)
+# arg...        Additional arguments for operator
+#
+# Examples:
+# lop {1 2 3} + 1; # 2 3 4
+# lop {1 2 3} > 1; # 0 1 1
+
+proc ::vutil::lop {list op args} {
+    lmap value $list {::tcl::mathop::$op $value {*}$args}
+}
+
+# new dict --
+#
+# Tcl dictionary data type
+# Includes methods for every Tcl dict command option, with the exception of 
+# the "info" option, which is replaced with "stats"
+
+::vutil::type new dict {
+    # Adjust standard methods for dictionary type
+    method ValidateValue {value} {
+        return [dict create {*}$value]
+    }
+    method UpdateFields {} {
+        set (size) [my size]
+        next
+    }
+    method print {args} {
+        dict for {key value} $(value) {
+            puts {*}$args [list $key $value]
+        }
+    }
+    
+    # DICT METHODS (SAME AS DICT COMMAND OPTIONS, EXCEPT FOR INFO/CREATE) 
+    ########################################################################
+    # dictObj append key ?string ...?
+    method append {key args} {
+        dict append (value) $key {*}$args
+        return [self]
+    }
+    # dictObj exists key ?key ...? 
+    method exists {key args} {
+        dict exists $(value) $key {*}$args
+    }
+    # dictObj filter filterType arg ?arg ...?
+    #   dictObj filter key ?globPattern ...? 
+    #   dictObj filter script {keyVariable valueVariable} script 
+    #   dictObj filter value ?globPattern ...? 
+    method filter {type args} {
+        set (value) [uplevel 1 [list dict filter $(value) $type {*}$args]]
+        return [self]
+    }
+    # dictObj for {keyVariable valueVariable} body 
+    method for {varList body} {
+        uplevel 1 [list dict for $varList $(value) $body]
+    }
+    # dictObj get ?key ...? 
+    method get {args} {
+        dict get $(value) {*}$args
+    }
+    # dictObj incr key ?increment? 
+    method incr {key {incr 1}} {
+        dict incr (value) $key $incr
+        return [self]
+    }
+    # dictObj keys ?globPattern? 
+    method keys {args} {
+        dict keys $(value) {*}$args
+    }
+    # dictObj lappend key ?value ...? 
+    method lappend {key args} {
+        dict lappend (value) $key {*}$args
+        return [self]
+    }
+    # dictObj map {keyVariable valueVariable} body 
+    method map {varList body} { 
+        set (value) [uplevel 1 [list dict map $varList $(value) $body]]
+        return [self]
+    }
+    # dictObj merge ?dictionaryValue ...?
+    method merge {args} {
+        set (value) [dict merge $(value) {*}$args]
+        return [self]
+    }
+    # dictObj remove ?key ...? 
+    method remove {args} {
+        set (value) [dict remove $(value) {*}$args]
+        return [self]
+    }
+    # dictObj replace ?key value ...? 
+    method replace {args} {
+        set (value) [dict replace $(value) {*}$args]
+        return [self]
+    }
+    # dictObj set key ?key ...? value 
+    method set {key args} {
+        dict set (value) $key {*}$args
+        return [self]
+    }
+    # dictObj size 
+    method size {} {
+        dict size $(value)
+    }
+    # dictObj stats (dict info)
+    method stats {} {
+        dict info $(value)
+    }
+    # dictObj unset key ?key ...? 
+    method unset {key args} {
+        dict unset (value) $key {*}$args
+        return [self]
+    }
+    # dictObj update key varName ?key varName ...? body  
+    method update {args} {
+        uplevel 1 [list dict update [self]::(value) {*}$args]
+        return [self]
+    }
+    # dictObj values ?globPattern? 
+    method values {args} {
+        dict values $(value) {*}$args
+    }
+    # dictObj with ?key ...? body 
+    method with {args} {
+        uplevel 1 [list dict with [self]::(value) {*}$args]
+        return [self]
+    }
+}
+
 # API for Developers 
 ################################################################################
 
@@ -1077,4 +1420,4 @@ proc ::vutil::GetRefName {args} {
 }
 
 # Finally, provide the package
-package provide vutil 2.0
+package provide vutil 2.1
