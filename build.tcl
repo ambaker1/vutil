@@ -1,5 +1,5 @@
 # Define version numbers
-set version 2.1
+set version 2.1.1
 # Load required packages for testing
 package require tin 1.0
 # For testing in OpenSees

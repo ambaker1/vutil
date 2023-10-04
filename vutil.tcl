@@ -1009,7 +1009,7 @@ proc ::vutil::new {type refName args} {
 # new list --
 #
 # Almost everything is a list. Asserts that input is a list.
-# This data type also has "length", "@", and "@@" methods.
+# Default value ""
 #
 # Additional methods:
 # length    list length (llength)
@@ -1137,6 +1137,7 @@ proc ::vutil::new {type refName args} {
 #
 # Arguments:
 # body          Body to evaluate, using $@refs for list references.
+# list          Optional list to use for $@.
 # refName       Reference name to copy to. Default blank to return value.
 
 proc ::vutil::leval {body args} {
@@ -1201,6 +1202,7 @@ proc ::vutil::leval {body args} {
 #
 # Arguments:
 # expr          Expression, using $@refs for list references
+# list          Optional list to use for $@.
 # refName       Reference name to copy to. Default blank to return value
 
 proc ::vutil::lexpr {expr args} {
@@ -1235,6 +1237,8 @@ proc ::vutil::lop {list op args} {
 # new dict --
 #
 # Tcl dictionary data type
+# Default value ""
+#
 # Includes methods for every Tcl dict command option, with the exception of 
 # the "info" option, which is replaced with "stats"
 
@@ -1420,4 +1424,4 @@ proc ::vutil::GetRefName {args} {
 }
 
 # Finally, provide the package
-package provide vutil 2.1
+package provide vutil 2.1.1
