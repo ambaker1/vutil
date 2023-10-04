@@ -1,6 +1,5 @@
 package require tin
 tin import vutil
-tin import flytrap
 
 puts "Variable defaults"
 set a 5
