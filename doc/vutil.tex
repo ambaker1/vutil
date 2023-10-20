@@ -14,8 +14,17 @@
 \maketitle
 \begin{abstract}
 \begin{center}
-This package provides various utilities for working with variables in Tcl, including read-only variables and a framework for TclOO garbage collection.
+The ``vutil'' package provides utilities such as read-only variables and TclOO garbage collection.
+
+This package is also a \textcolor{blue}{\href{https://github.com/ambaker1/Tin}{Tin}} package, and can be loaded in as shown below:
 \end{center}
+\begin{example}{Installing and loading ``vutil''}
+\begin{lstlisting}
+package require tin
+tin add -auto vutil https://github.com/ambaker1/vutil install.tcl 3.0-
+tin import vutil
+\end{lstlisting}
+\end{example}
 \end{abstract}
 
 \clearpage
