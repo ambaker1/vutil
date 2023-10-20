@@ -5,3 +5,4 @@ doc/**
 !doc/vutil.pdf
 !doc/template/
 !doc/template/*.tex
+!doc/template/*.tin
