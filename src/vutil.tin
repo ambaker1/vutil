@@ -271,12 +271,15 @@ proc ::vutil::TieObjTrace {args} {
     exit 2
 }
 
+# Garbage Collection Superclasses
+################################################################################
+
 # ::vutil::GC --
 #
 # Superclass for objects with garbage collection. Not exported.
 #
-# Methods:
-# -->       Copy object to new reference variable.
+# Public methods:
+# $object --> $varName      Copy object to new variable.
 
 ::oo::class create ::vutil::GC {
     # Constructor ties object to gc variable.
@@ -291,7 +294,7 @@ proc ::vutil::TieObjTrace {args} {
     #
     # Syntax:
     # my CopyObject $varName
-    # $obj --> $varName
+    # $object --> $varName
     #
     # Arguments:
     # varName       Variable to copy to.
@@ -303,6 +306,86 @@ proc ::vutil::TieObjTrace {args} {
         tailcall my CopyObject $varName
     }
     export -->
+}
+
+# ::vutil::Container --
+#
+# Subclass of ::vutil::GC, superclass for container objects. 
+# Value is stored within object variable "self".
+#
+# Public methods:
+# $object               No method (unknown), returns value.
+# $object = $value      Value assignment
+# $object | $arg ...    Evaluate methods in temp object, return result.
+
+::oo::class create ::vutil::Container {
+    superclass ::vutil::GC; # includes --> method
+    variable self; # Value of object
+    constructor {varName {value ""}} {
+        my SetValue $value
+        next $varName
+    }
+    
+    # GetValue () --
+    # 
+    # Get the value stored in the container.
+    #
+    # Syntax:
+    # my GetValue
+    
+    method GetValue {} {
+        return $self
+    }
+    method unknown {args} {
+        if {[llength $args] == 0} {
+            return [my GetValue]
+        }
+        next {*}$args
+    }
+    unexport unknown
+    
+    # SetValue (=) --
+    #
+    # Set the value stored in the container, and return object name.
+    #
+    # Syntax:
+    # my SetValue $value
+    # 
+    # Arguments:
+    # value         Value to set
+    
+    method SetValue {value} {
+        set self $value
+        return [self]
+    }
+    method = {value} {
+        my SetValue $value
+    }
+    export =
+    
+    # TempObject (|) --
+    # 
+    # Copy to temp object, evaluate method, and return object value or result.
+    #
+    # Syntax:
+    # my TempObject $method $arg ...
+    # 
+    # Arguments:
+    # method        Method name
+    # arg ...       Arguments for method
+    
+    method TempObject {method args} {
+        my CopyObject temp
+        set result [uplevel 1 [list $temp $method {*}$args]]
+        if {$result eq $temp} {
+            set result [$temp]
+        }
+        return $result
+    }
+    method | {method args} {
+        tailcall my TempObject $method {*}$args
+    }
+    export |
 }
 
 # Finally, provide the package

@@ -1,5 +1,5 @@
 # Define version numbers
-set version 3.0
+set version 3.1
 # Load required packages for testing
 package require tin 1.1
 # For testing in OpenSees
@@ -74,28 +74,36 @@ test lock-trace-count {
     llength [trace info variable a]
 } -result {1}
 
-test tie1 {
-    # Trying to tie to something that is not an object will return an error.
-} -body {
-    catch {tie a 5}
-} -result {1}
-
 # tie
 # untie
 
-test tie2 {
-    # Verify that you can tie and untie TclOO objects to variables
+test tie_error1 {
+    # Trying to tie to something that is not an object will return an error.
 } -body {
-    set result ""
+    tie a 5
+} -returnCodes {1} -result {"5" is not an object}
+
+test tie_error2 {
+    # Error for when a variable is locked
+} -body {
     # Example from https://www.tcl.tk/man/tcl8.6/TclCmd/class.html
     oo::class create fruit {
         method eat {} {
             puts "yummy!"
         }
     }
-    # Cannot tie a locked var.
-    assert [catch {tie a [fruit new]}]; # locked
-    unlock a; # Now you can tie "a"
+    try {
+        lock a 5
+        tie a [fruit new]
+    } finally {
+        unlock a; # Now you can tie "a"
+    }
+} -returnCodes {1} -result {cannot tie "a": read-only}
+
+test tie {
+    # Verify that you can tie and untie TclOO objects to variables
+} -body {
+    set result ""
     tie a [fruit new]
     set b $a; # Save alias
     lappend result [info object isa object $a]; # true
@@ -221,13 +229,62 @@ test GC3 {
         }
         untie sum
         return $sum
-        $sum --> ::x
     }
     # Get sum, and store in "total"
     tie total [sum {1 2 3 4}]
     [sum {1 2 3 4}] --> total
     llength [info class instances count]
 } -result {2}
+
+test Container {
+    # Container superclass. 
+} -body {
+    oo::class create vector {
+        superclass ::vutil::Container
+        variable self; # Access the "self" variable from superclass
+        method SetValue {value} {
+            # Convert to double
+            next [lmap x $value {::tcl::mathfunc::double $x}]
+        }
+        method print {args} {
+            puts {*}$args $self
+        }
+        method += {value} {
+            set self [lmap x $self {expr {$x + $value}}]
+            return [self]
+        }
+        method -= {value} {
+            set self [lmap x $self {expr {$x - $value}}]
+            return [self]
+        }
+        method *= {value} {
+            set self [lmap x $self {expr {$x * $value}}]
+            return [self]
+        }
+        method /= {value} {
+            set self [lmap x $self {expr {$x / $value}}]
+            return [self]
+        }
+        method @ {index args} {
+            if {[llength $args] == 0} {
+                return [lindex $self $index]
+            } elseif {[llength $args] != 2 || [lindex $args 0] ne "="} {
+                return -code error "wrong # args: should be\
+                        \"[self] @ index ?= value?\""
+            }
+            lset self $index [::tcl::mathfunc::double [lindex $args 1]]
+            return [self]
+        }
+        export += -= *= /= @
+    }
+    vector new x
+    $x = {1 2 3}
+    assert [$x += 5] eq $x
+    assert [$x] eq {6.0 7.0 8.0}
+    assert [$x | *= 5] eq {30.0 35.0 40.0}
+    assert [$x | @ 3 = 10] eq {6.0 7.0 8.0 10.0}
+    assert [$x] eq {6.0 7.0 8.0}
+}
 
 # Check number of failed tests
 set nFailed $::tcltest::numTests(Failed)
