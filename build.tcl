@@ -323,8 +323,13 @@ Variable-object ties
 hello world
 hello world
 invalid command name "::bar"
-Creating a class with garbage collection
+Simple container class
 hello world
+foo bar
+Advanced container class
+6.0 7.0 8.0
+6.0 7.0 8.0
+8.0
 } -errorOutput {failed to modify "a": read-only
 }
 

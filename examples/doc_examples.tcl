@@ -31,8 +31,8 @@ unset a; # destroys object
 catch {$b sayhello} result; # throws error
 puts $result
 
-puts "Creating a class with garbage collection"
-oo::class create container {
+puts "Simple container class"
+oo::class create value {
     superclass ::vutil::GC
     variable myValue
     constructor {varName {value {}}} {
@@ -42,7 +42,53 @@ oo::class create container {
     method set {value} {set myValue $value}
     method value {} {return $myValue}
 }
-[container new x] set {hello world}
+value new x {hello world}; # create new value, tie to x
+[$x --> y] set {foo bar}; # copy to y, set y to {foo bar}
 puts [$x value]
-unset x; # also destroys object
+puts [$y value]
+
+puts "Advanced container class"
+# Create a class for manipulating lists of floating point values
+oo::class create vector {
+    superclass ::vutil::Container
+    variable self; # Access the "self" variable from superclass
+    method SetValue {value} {
+        # Convert to double
+        next [lmap x $value {::tcl::mathfunc::double $x}]
+    }
+    method print {args} {
+        puts {*}$args $self
+    }
+    method += {value} {
+        set self [lmap x $self {expr {$x + $value}}]
+        return [self]
+    }
+    method -= {value} {
+        set self [lmap x $self {expr {$x - $value}}]
+        return [self]
+    }
+    method *= {value} {
+        set self [lmap x $self {expr {$x * $value}}]
+        return [self]
+    }
+    method /= {value} {
+        set self [lmap x $self {expr {$x / $value}}]
+        return [self]
+    }
+    method @ {index args} {
+        if {[llength $args] == 0} {
+            return [lindex $self $index]
+        } elseif {[llength $args] != 2 || [lindex $args 0] ne "="} {
+            return -code error "wrong # args: should be\
+                    \"[self] @ index ?= value?\""
+        }
+        lset self $index [::tcl::mathfunc::double [lindex $args 1]]
+        return [self]
+    }
+    export += -= *= /= @
+}
+vector new x {1 2 3}
+puts [$x | += 5]; # perform operation on temp object
+[$x += 5] print; # same operation, on main object
+puts [$x @ end]; # index into object
 
