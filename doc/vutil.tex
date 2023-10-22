@@ -192,9 +192,9 @@ foo bar
 \end{example}
 
 \section{Container Superclass}
-The class \cmdlink{::vutil::Container} is a TclOO superclass, built on-top of the \cmdlink{::vutil::GC} superclass. 
-The value is stored in the superclass variable ``self'', and can be accessed with the methods \textit{GetValue} and \textit{SetValue}.
-This class is not exported, and not intended for direct use, but rather is a template for container classes like in the example on the previous page. 
+The class \cmdlink{::vutil::Container} is a TclOO superclass, built on-top of the \cmdlink{::vutil::GC} superclass.
+In addition to the copy method ``\methodlink[0]{gc}{-{}->}'', this class stores a value in the variable ``self'', which can be accessed with the methods \textit{GetValue} and \textit{SetValue}.
+This class is not exported, and not intended for direct use, but rather is a template for container classes.
 Below is the syntax for the superclass constructor.
 
 \begin{syntax}
