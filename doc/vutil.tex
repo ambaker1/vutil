@@ -30,6 +30,7 @@ tin import vutil
 \clearpage
 \section{Default Variable Values}
 The command \cmdlink{default} assigns a default value to a variable if it does not exist.
+This can be used to write scripts that behave like procedures with default values.
 \begin{syntax}
 \command{default} \$varName \$value
 \end{syntax}
@@ -38,13 +39,13 @@ The command \cmdlink{default} assigns a default value to a variable if it does n
 \$value & Default value for variable
 \end{args}
 
-The example below shows how default values are only applied if the variable does not exist.
+The examples below shows how default values are only applied if the variables do not exist.
 \begin{example}{Variable defaults}
 \begin{lstlisting}
 set a 5
-default a 7; # equivalent to "if {![info exists a]} {set a 7}"
+default a 7
 puts $a
-unset a
+unset a; # variable no longer exists
 default a 7
 puts $a
 \end{lstlisting}
@@ -54,10 +55,31 @@ puts $a
 7
 \end{lstlisting}
 \end{example}
+\begin{example}{Overriding default values in file 'putsMessage.tcl'}
+\begin{lstlisting}
+source putsMessage.tcl
+set message {hello world}
+source putsMessage.tcl
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+foo bar
+hello world
+\end{lstlisting}
+\end{example}
+\begin{example}{File 'putsMessage.tcl'}
+\begin{lstlisting}
+default message {foo bar}
+puts $message
+\end{lstlisting}
+\end{example}
+
+
 \clearpage
 \section{Read-Only Variables}
 The command \cmdlink{lock} uses Tcl variable traces to make a read-only variable. 
 If attempting to modify a locked variable, it will throw a warning, but not an error.
+This can be used to override values in a script from a top-level, allowing the user to run a parameter study without modifying the source scripts.
 
 \begin{syntax}
 \command{lock} \$varName <\$value>
@@ -95,9 +117,8 @@ failed to modify "a": read-only
 Note: You can lock array elements, but not an entire array.
 
 \clearpage
-
 \section{Variable-Object Ties}
-As of Tcl version 8.6, there is no garbage collection for Tcl objects, they have to be removed manually with the ``destroy'' method. 
+As of Tcl version 8.6, there is no garbage collection for Tcl objects, they have to be removed manually with the \textit{\href{https://www.tcl.tk/man/tcl8.6/TclCmd/object.html}{destroy}} method. 
 The command \cmdlink{tie} is a solution for this problem, using variable traces to destroy the corresponding object when the variable is unset or modified. 
 For example, if an object is tied to a local procedure variable, the object will be destroyed when the procedure returns.
 
@@ -139,23 +160,38 @@ invalid command name "::bar"
 \end{lstlisting}
 \end{example}
 Note: You can tie array elements, but not an entire array, and you cannot tie a locked variable.
+
 \clearpage
 \section{Garbage Collection Superclass}
-The class ``\texttt{\command{::vutil::GC}}'' is a TclOO superclass that includes garbage collection. 
+The class \cmdlink{::vutil::GC} is a TclOO superclass that includes garbage collection. 
 This class is not exported, and not intended for direct use, as it is simply a template for classes with built-in garbage collection, by tying the object to a specified variable using \cmdlink{tie}.
-In addition to tying the object to a variable in the constructor, the ``\texttt{::vutil::GC}'' superclass also provides a copy method that sets up garbage collection: ``\texttt{-{}->}''.
+Below is the syntax for the superclass constructor.
+
 \begin{syntax}
-\$obj -{}-> \$varName
+\command{::vutil::GC} new \$varName
+\end{syntax}
+\begin{syntax}
+::vutil::GC create \$name \$varName
 \end{syntax}
 \begin{args}
-\$obj & Object that inherits the ``\texttt{::vutil::GC}'' superclass. \\
+\$varName & Name of variable for garbage collection. \\
+\$name & Name of object (for ``create'' method).
+\end{args}
+In addition to tying the object to a variable in the constructor, the \cmdlink{::vutil::GC} superclass also provides a public copy method that sets up garbage collection: ``\methodlink[0]{gc}{-{}->}'', which calls the private method \textit{CopyObject}
+\begin{syntax}
+\method{gc}{-{}->} \$varName
+\end{syntax}
+\begin{syntax}
+my CopyObject \$varName
+\end{syntax}
+\begin{args}
 \$varName & Name of variable for garbage collection.
 \end{args}
 
 Below is an example of how this superclass can be used to build garbage collection into a TclOO class. 
-\begin{example}{Creating a class with garbage collection}
+\begin{example}{Simple container class}
 \begin{lstlisting}
-oo::class create container {
+oo::class create value {
     superclass ::vutil::GC
     variable myValue
     constructor {varName {value {}}} {
@@ -165,13 +201,117 @@ oo::class create container {
     method set {value} {set myValue $value}
     method value {} {return $myValue}
 }
-[container new x] set {hello world}
+value new x {hello world}; # create new value, tie to x
+[$x --> y] set {foo bar}; # copy to y, set y to {foo bar}
 puts [$x value]
-unset x; # also destroys object
+puts [$y value]
 \end{lstlisting}
 \tcblower
 \begin{lstlisting}
 hello world
+foo bar
+\end{lstlisting}
+\end{example}
+
+\section{Container Superclass}
+The class \cmdlink{::vutil::Container} is a TclOO superclass, built on-top of the \cmdlink{::vutil::GC} superclass.
+In addition to the copy method ``\methodlink[0]{gc}{-{}->}'', this class stores a value in the variable ``self'', which can be accessed with the methods \textit{GetValue} and \textit{SetValue}.
+This class is not exported, and not intended for direct use, but rather is a template for container classes.
+Below is the syntax for the superclass constructor.
+
+\begin{syntax}
+\command{::vutil::Container} new \$varName <\$value>
+\end{syntax}
+\begin{syntax}
+::vutil::Container create \$name \$varName <\$value>
+\end{syntax}
+\begin{args}
+\$varName & Name of variable for garbage collection. \\
+\$value & Value to store in container. Default blank. \\
+\$name & Name of object (for ``create'' method).
+\end{args}
+
+Calling a container object by itself calls the \textit{GetValue} method, which queries the value in the container.
+\begin{syntax}
+\$containerObj
+\end{syntax}
+\begin{syntax}
+my GetValue
+\end{syntax}
+
+The assignment operator, ``\methodlink[0]{container}{=}'', calls the \textit{SetValue} method, which sets the value in the container.
+\begin{syntax}
+\method{container}{=} \$value
+\end{syntax}
+\begin{syntax}
+my SetValue \$value
+\end{syntax}
+\begin{args}
+\$value & Value to store in container. \\
+\end{args}
+The pipe operator, ``\methodlink[0]{container}{|}'', calls the \textit{TempObject} method, which copies the object to a temporary object, evaluates the method, and returns the result, or the temporary object value if the result is the temporary object.
+\begin{syntax}
+\method{container}{|} \$method \$arg ...
+\end{syntax}
+\begin{syntax}
+my TempObject \$method \$arg ...
+\end{syntax}
+\begin{args}
+\$method & Method to evaluate in temporary object. \\
+\$arg ... & Arguments for method.
+\end{args}
+\clearpage
+\begin{example}{Advanced container class}
+\begin{lstlisting}
+# Create a class for manipulating lists of floating point values
+oo::class create vector {
+    superclass ::vutil::Container
+    variable self; # Access the "self" variable from superclass
+    method SetValue {value} {
+        # Convert to double
+        next [lmap x $value {::tcl::mathfunc::double $x}]
+    }
+    method print {args} {
+        puts {*}$args $self
+    }
+    method += {value} {
+        set self [lmap x $self {expr {$x + $value}}]
+        return [self]
+    }
+    method -= {value} {
+        set self [lmap x $self {expr {$x - $value}}]
+        return [self]
+    }
+    method *= {value} {
+        set self [lmap x $self {expr {$x * $value}}]
+        return [self]
+    }
+    method /= {value} {
+        set self [lmap x $self {expr {$x / $value}}]
+        return [self]
+    }
+    method @ {index args} {
+        if {[llength $args] == 0} {
+            return [lindex $self $index]
+        } elseif {[llength $args] != 2 || [lindex $args 0] ne "="} {
+            return -code error "wrong # args: should be\
+                    \"[self] @ index ?= value?\""
+        }
+        lset self $index [::tcl::mathfunc::double [lindex $args 1]]
+        return [self]
+    }
+    export += -= *= /= @
+}
+vector new x {1 2 3}
+puts [$x | += 5]; # perform operation on temp object
+[$x += 5] print; # same operation, on main object
+puts [$x @ end]; # index into object
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+6.0 7.0 8.0
+6.0 7.0 8.0
+8.0
 \end{lstlisting}
 \end{example}
 \end{document}
