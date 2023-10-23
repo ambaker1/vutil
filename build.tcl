@@ -307,15 +307,19 @@ tin clear
 tin import vutil -exact $version
 
 # Run examples
+cd examples
 test doc_examples {
     # Documentation examples, (note, not automatically built from docs)
 } -body {
     puts ""
-    source examples/doc_examples.tcl
+    source doc_examples.tcl
 } -output {
 Variable defaults
 5
 7
+Overriding default values in 'putsMessage.tcl'
+foo bar
+hello world
 Variable locks
 5
 7
@@ -332,6 +336,7 @@ Advanced container class
 8.0
 } -errorOutput {failed to modify "a": read-only
 }
+cd ..
 
 # Build documentation
 puts "Building documentation..."

@@ -30,6 +30,7 @@ tin import vutil
 \clearpage
 \section{Default Variable Values}
 The command \cmdlink{default} assigns a default value to a variable if it does not exist.
+This can be used to write scripts that behave like procedures with default values.
 \begin{syntax}
 \command{default} \$varName \$value
 \end{syntax}
@@ -38,13 +39,13 @@ The command \cmdlink{default} assigns a default value to a variable if it does n
 \$value & Default value for variable
 \end{args}
 
-The example below shows how default values are only applied if the variable does not exist.
+The examples below shows how default values are only applied if the variables do not exist.
 \begin{example}{Variable defaults}
 \begin{lstlisting}
 set a 5
-default a 7; # equivalent to "if {![info exists a]} {set a 7}"
+default a 7
 puts $a
-unset a
+unset a; # variable no longer exists
 default a 7
 puts $a
 \end{lstlisting}
@@ -54,10 +55,31 @@ puts $a
 7
 \end{lstlisting}
 \end{example}
+\begin{example}{Overriding default values in file 'putsMessage.tcl'}
+\begin{lstlisting}
+source putsMessage.tcl
+set message {hello world}
+source putsMessage.tcl
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+foo bar
+hello world
+\end{lstlisting}
+\end{example}
+\begin{example}{File 'putsMessage.tcl'}
+\begin{lstlisting}
+default message {foo bar}
+puts $message
+\end{lstlisting}
+\end{example}
+
+
 \clearpage
 \section{Read-Only Variables}
 The command \cmdlink{lock} uses Tcl variable traces to make a read-only variable. 
 If attempting to modify a locked variable, it will throw a warning, but not an error.
+This can be used to override values in a script from a top-level, allowing the user to run a parameter study without modifying the source scripts.
 
 \begin{syntax}
 \command{lock} \$varName <\$value>
@@ -95,9 +117,8 @@ failed to modify "a": read-only
 Note: You can lock array elements, but not an entire array.
 
 \clearpage
-
 \section{Variable-Object Ties}
-As of Tcl version 8.6, there is no garbage collection for Tcl objects, they have to be removed manually with the ``destroy'' method. 
+As of Tcl version 8.6, there is no garbage collection for Tcl objects, they have to be removed manually with the \textit{\href{https://www.tcl.tk/man/tcl8.6/TclCmd/object.html}{destroy}} method. 
 The command \cmdlink{tie} is a solution for this problem, using variable traces to destroy the corresponding object when the variable is unset or modified. 
 For example, if an object is tied to a local procedure variable, the object will be destroyed when the procedure returns.
 
@@ -139,6 +160,7 @@ invalid command name "::bar"
 \end{lstlisting}
 \end{example}
 Note: You can tie array elements, but not an entire array, and you cannot tie a locked variable.
+
 \clearpage
 \section{Garbage Collection Superclass}
 The class \cmdlink{::vutil::GC} is a TclOO superclass that includes garbage collection. 

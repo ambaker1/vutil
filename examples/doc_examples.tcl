@@ -9,6 +9,11 @@ unset a
 default a 7
 puts $a
 
+puts "Overriding default values in 'putsMessage.tcl'"
+source putsMessage.tcl
+set message {hello world}
+source putsMessage.tcl
+
 puts "Variable locks"
 lock a 5
 set a 7; # throws warning to stderr channel
