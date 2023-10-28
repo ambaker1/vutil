@@ -11,10 +11,11 @@
 
 # Define namespace
 namespace eval ::vutil {
+    # Define the types available (via "string is")
     namespace export default; # Set a variable if it does not exist
     namespace export lock unlock; # Hard set a Tcl variable
     namespace export tie untie; # Tie a Tcl variable to a Tcl object
-    namespace export var; # Object variable class
+    namespace export new; # Create new value container object
 }
 
 # BASIC VARIABLE UTILITIES
@@ -135,33 +136,33 @@ proc ::vutil::LockTrace {value varName index op} {
 
 # tie --
 # 
-# Tie a variable to a Tcl object, such that when the variable is modified or
-# unset, by unset or by going out of scope, that the object is destroyed as well
+# Tie a variable to a Tcl object, such that when the reference variable is 
+# modified, unset, or goes out of scope, that the object is destroyed as well.
 #
 # Syntax:
-# tie $varName <$object>
+# tie $refName <$object>
 #
 # Arguments:
-# varName       Reference variable representing object
+# refName       Reference variable representing object
 # object        TclOO object
 
-proc ::vutil::tie {varName args} {
+proc ::vutil::tie {refName args} {
     # Create upvar link to reference variable
-    upvar 1 $varName myVar
-    if {[array exists myVar]} {
+    upvar 1 $refName ref
+    if {[array exists ref]} {
         return -code error "cannot tie an array"
     }
     # Switch for arity (allow for self-tie)
     if {[llength $args] == 0} {
-        if {[info exists myVar]} {
-            set object $myVar
+        if {[info exists ref]} {
+            set object $ref
         } else {
-            return -code error "can't read \"$varName\": no such variable"
+            return -code error "can't read \"$refName\": no such variable"
         }
     } elseif {[llength $args] == 1} {
         set object [lindex $args 0]
     } else {
-        return -code error "wrong # args: should be \"tie varName ?object?\""
+        return -code error "wrong # args: should be \"tie refName ?object?\""
     }
     
     # Verify that input is an object
@@ -170,18 +171,17 @@ proc ::vutil::tie {varName args} {
     }
     
     # Set variable to object (triggers any tie traces)
-    set myVar $object
+    set ref $object
     
     # Verify that assignment worked. 
     # If not, variable is locked to a different value.
-    if {$myVar ne $object} {
-        return -code error "cannot tie \"$varName\": read-only"
+    if {$ref ne $object} {
+        return -code error "cannot tie \"$refName\": read-only"
     }
     
     # Create variable traces to destroy object upon write or unset of variable.
     # Also create command trace to prevent renaming of object.
-    trace add variable myVar write [list ::vutil::TieVarTrace $object]
-    trace add variable myVar unset [list ::vutil::TieVarTrace $object]
+    trace add variable ref {write unset} [list ::vutil::TieVarTrace $object]
     trace add command $object rename ::vutil::TieObjTrace
     
     # Return the value (like with "set")
@@ -199,15 +199,15 @@ proc ::vutil::tie {varName args} {
 # varName...    Variables to unlock
 
 proc ::vutil::untie {args} {
-    foreach varName $args {
-        upvar 1 $varName myVar
-        if {[array exists myVar]} {
+    foreach refName $args {
+        upvar 1 $refName ref
+        if {![info exists ref]} {
+            return -code error "can't untie \"$refName\": no such variable"
+        }
+        if {[array exists ref]} {
             return -code error "cannot untie an array"
         }
-        if {![info exists myVar]} {
-            return -code error "can't untie \"$myVar\": no such variable"
-        }
-        RemoveTie myVar $myVar
+        RemoveTie ref $ref
     }
     return
 }
@@ -223,10 +223,9 @@ proc ::vutil::untie {args} {
 # varName       Variable name to remove traces from
 # objName       Name of object to remove them from
 
-proc ::vutil::RemoveTie {varName object} {
-    upvar 1 $varName myVar
-    trace remove variable myVar write [list ::vutil::TieVarTrace $object]
-    trace remove variable myVar unset [list ::vutil::TieVarTrace $object]
+proc ::vutil::RemoveTie {refName object} {
+    upvar 1 $refName ref
+    trace remove variable ref {write unset} [list ::vutil::TieVarTrace $object]
     catch {trace remove command $object rename ::vutil::TieObjTrace}
 }
 
@@ -235,25 +234,25 @@ proc ::vutil::RemoveTie {varName object} {
 # Removes traces and destroys associated Tcl object
 #
 # Syntax:
-# TieVarTrace $object $varName $index $op
+# TieVarTrace $object $refName $index $op
 #
 # Arguments:
-# varName       Variable (or array) name
+# refName       Variable (or array) name
 # index         Index of array if variable is array
 # op            Trace operation (unused)
 
-proc ::vutil::TieVarTrace {object varName index op} {
-    upvar 1 $varName myVar
+proc ::vutil::TieVarTrace {object refName index op} {
+    upvar 1 $refName ref
     # Remove tie and return if setting to self
-    if {[info exists myVar]} {
-        if {[array exists myVar]} {
-            RemoveTie myVar($index) $object
-            if {$myVar($index) eq $object} {
+    if {[info exists ref]} {
+        if {[array exists ref]} {
+            RemoveTie ref($index) $object
+            if {$ref($index) eq $object} {
                 return
             }
         } else {
-            RemoveTie myVar $object
-            if {$myVar eq $object} {
+            RemoveTie ref $object
+            if {$ref eq $object} {
                 return
             }
         }
@@ -277,18 +276,18 @@ proc ::vutil::TieObjTrace {args} {
 # Garbage Collection Superclasses
 ################################################################################
 
-# ::vutil::GC --
+# ::vutil::GarbageCollector --
 #
 # Superclass for objects with garbage collection. Not exported.
 #
 # Public methods:
-# $object --> $varName      Copy object to new variable.
+# $object --> $refName      Copy object to new variable.
 
-::oo::class create ::vutil::GC {
+::oo::class create ::vutil::GarbageCollector {
     # Constructor ties object to gc variable.
-    # Call "next $varName" in subclass constructor.    
-    constructor {varName} {
-        uplevel 1 [list ::vutil::tie $varName [self]]
+    # Call "next $refName" in subclass constructor.    
+    constructor {refName} {
+        uplevel 1 [list ::vutil::tie $refName [self]]
     }
     
     # CopyObject (-->) --
@@ -296,69 +295,93 @@ proc ::vutil::TieObjTrace {args} {
     # Copy object to new variable (returns new object name)
     #
     # Syntax:
-    # my CopyObject $varName
-    # $object --> $varName
+    # my CopyObject $refName
+    # $object --> $refName
     #
     # Arguments:
-    # varName       Variable to copy to.
+    # refName       Variable to copy to.
     
-    method CopyObject {varName} {
-        uplevel 1 [list ::vutil::tie $varName [oo::copy [self]]]
+    method CopyObject {refName} {
+        uplevel 1 [list ::vutil::tie $refName [oo::copy [self]]]
     }
-    method --> {varName} {
-        tailcall my CopyObject $varName
+    method --> {refName} {
+        tailcall my CopyObject $refName
     }
     export -->
 }
 
-# var --
+# ValueContainer --
 #
-# Object-variable class. 
+# ValueContainer class.
 # Value is stored within object variable "myValue".
+# Type is stored within object variable "myType".
 #
 # Syntax:
-# var new $varName <$value>
+# ValueContainer new $refName <$value> <$type>
 #
 # Arguments:
-# varName       Variable for garbage collection
-# value         Value of variable. Default "".
+# refName       Reference variable for object.
+# value         Value to initialize with. Default "".
+# type          Type for data validation. Default "" for no validation.
 #
 # Public methods:
-# $varObj                   No method (unknown), returns value.
-# $varObj . $op $arg ...    Value of object, passed through mathop.
-# $varObj = $value          Value assignment.
-# $varObj .= $op $arg ...   Assign to value of math operator.
-# $varObj := $expr          Expression assignment.
-# $varObj ::= $body         Evaluation assignment.
-# $varObj | $arg ...        Evaluate methods in temp object, return result.
+# $valueObj <value>           Returns value.
+# $valueObj type              Get type.
+# $valueObj = $value          Value assignment.
+# $valueObj := $expr          Expression assignment.
+# $valueObj | $arg ...        Evaluate methods in temp object, return result.
+# $valueObj & $varName $body  Evaluate script to modify value.
 
-::oo::class create ::vutil::var {
-    superclass ::vutil::GC; # includes --> method
-    variable myValue; # Value of object
-    constructor {varName {value ""}} {
+::oo::class create ::vutil::ValueContainer {
+    superclass ::vutil::GarbageCollector; # includes --> method
+    variable myValue myType; # Value and type of object
+    constructor {refName {value ""} {type ""}} {
+        set myType $type
         my SetValue $value
-        next $varName
+        next $refName
     }
     
     # ValidateValue --
     # 
-    # Validate value stored in var.
+    # Validate value stored in object. 
+    # Calls ::vutil::type::$myType.
     
     method ValidateValue {value} {
-        return $value
+        if {$myType eq ""} {
+            return $value
+        }
+        ::vutil::type::$myType $value
     }
     
-    # GetValue () --
-    # GetOpValue (.) --
+    # GetType (type) --
+    #
+    # Return type of object.
+    #
+    # Syntax:
+    # my GetType
+    # $object type
+    
+    method GetType {} {
+        return $myType
+    }
+    method type {} {
+        my GetType
+    }
+    
+    # GetValue (value, unknown) --
     # 
     # Get the value stored in the object.
     #
     # Syntax:
     # my GetValue
+    # $object value
     # $object
     
     method GetValue {} {
         return $myValue
+    }
+    method value {} {
+        my GetValue
     }
     method unknown {args} {
         if {[llength $args] == 0} {
@@ -368,36 +391,19 @@ proc ::vutil::TieObjTrace {args} {
     }
     unexport unknown
     
-    # GetOpValue (.) --
-    #
-    # Get the value, passed through a math operator.
-    #
-    # Syntax:
-    # my GetOpValue $op $arg ...
-    # $object . $op $arg ...
-    #
-    # Arguments:
-    # op            Valid math operator
-    # arg ...       Additional arguments for math operator
-    
-    method GetOpValue {op args} {
-        ::tcl::mathop::$op [my GetValue] {*}$args
-    }
-    method . {op args} {
-        my GetOpValue $op {*}$args
-    }
-    export .
-    
-    # SetValue (=) --
+    # SetValue (= :=) --
     #
     # Set the value stored in the object, and return object name.
+    # For numeric and boolean types, setting to "blank" sets to default.
     #
     # Syntax:
     # my SetValue $value
     # $object = $value
+    # $object := $expr
     # 
     # Arguments:
     # value         Value to set
+    # expr          Math expression to evaluate.
     
     method SetValue {value} {
         set myValue [my ValidateValue $value]
@@ -406,38 +412,73 @@ proc ::vutil::TieObjTrace {args} {
     method = {value} {
         my SetValue $value
     }
-    export =
-    
-    # Other assignment operators (.= := ::=) --
-    # 
-    # Assign to result of mathop, expression, or script.
-    #
-    # Syntax:
-    # $object .= $op $arg ...
-    # $object := $expr
-    # $object ::= $body
-    #
-    # Arguments:
-    # op            Valid math operator.
-    # arg ...       Additional arguments for math operator.
-    # expr          Math expression to evaluate.
-    # body          Tcl script to evaluate.
-    
-    method .= {op args} {
-        my SetValue [my GetOpValue $op {*}$args]
-    }
     method := {expr} {
         my SetValue [my Uplevel 1 [list expr $expr]]
     }
-    method ::= {body} {
-        my SetValue [my Uplevel 1 $body]
+    export = :=
+    
+    # TempObject (|) --
+    # 
+    # Copy to temp object, evaluate method, and return object value or result.
+    #
+    # Syntax:
+    # my TempObject $method $arg ...
+    # $object | 
+    # 
+    # Arguments:
+    # method        Method name
+    # arg ...       Arguments for method
+    
+    method TempObject {method args} {
+        my CopyObject temp
+        set result [uplevel 1 [list $temp $method {*}$args]]
+        if {$result eq $temp} {
+            set result [$temp]
+        }
+        return $result
     }
-    export .= := ::=
+    method | {method args} {
+        tailcall my TempObject $method {*}$args
+    }
+    export |
+    
+    # RefEval (&) --
+    #
+    # Evaluate a command, using a temporary variable for the object value.
+    # Unsetting the temporary variable will destroy the object.
+    # Modifications will be applied at the end of the script.
+    #
+    # Syntax:
+    # my RefEval $varName $body 
+    # $object & $varName $body
+    #
+    # Arguments:
+    # varName       Variable name to access raw value with.
+    # body          Body to evaluate.
+    
+    method RefEval {varName body} {
+        upvar 1 $varName var
+        set var [my GetValue]
+        try {
+            my Uplevel 1 $body; # establishes "$" alias as well
+        } finally {
+            if {![info exists var]} {
+                my destroy
+            } elseif {$var ne [my GetValue]} {
+                my SetValue $var
+                unset var
+            }
+        }
+    }
+    method & {varName body} {
+        tailcall my RefEval $varName $body
+    }
+    export &
     
     # Uplevel --
     # 
-    # Evaluate the script in the caller, creating an alias for the object.
-    # Used with operators := and ::=
+    # Evaluate the script in the caller, creating an alias ($) for the object.
+    # Used with operator :=
     #
     # Syntax:
     # my Uplevel $level $body
@@ -457,30 +498,102 @@ proc ::vutil::TieObjTrace {args} {
             interp alias {} $ {} {*}$oldAlias
         }
     }
-    
-    # TempObject (|) --
-    # 
-    # Copy to temp object, evaluate method, and return object value or result.
-    #
-    # Syntax:
-    # my TempObject $method $arg ...
-    # 
-    # Arguments:
-    # method        Method name
-    # arg ...       Arguments for method
-    
-    method TempObject {method args} {
-        my CopyObject temp
-        set result [uplevel 1 [list $temp $method {*}$args]]
-        if {$result eq $temp} {
-            set result [$temp]
-        }
-        return $result
+}
+
+# new --
+#
+# Declare a new value container object, using the ValueContainer superclass.
+#
+# Syntax:
+# new <$type> $refName <= $value>
+# 
+# Arguments:
+# type          Type for validation. See ::vutil::type namespace.
+# refName       Reference variable name.
+# value         Value to assign to variable. Optional.
+
+proc ::vutil::new {args} {
+    # Check arity. Must be 1,2,3, or 4 args.
+    if {[llength $args] == 0 || [llength $args] > 4} {
+        return -code error "wrong # args: should be\
+                \"new ?type? refName ?= value?\""
     }
-    method | {method args} {
-        tailcall my TempObject $method {*}$args
+    # Assignment case
+    if {[llength $args] % 2} {
+        set type ""
+        set args [lassign $args refName]
+    } else {
+        set args [lassign $args type refName]
     }
-    export |
+    # Assign default values.
+    if {[llength $args] == 0} {
+        set value [type::$type]; # Get default for type
+    } elseif {[lindex $args 0] eq "="} {
+        set value [lindex $args end]
+    } else {
+        return -code error "bad syntax: want \"new ?type? refName = value\""
+    }
+    # Call ValueContainer constructor
+    tailcall ValueContainer new $refName $value $type
+}
+
+# Type library
+################################################################################
+namespace eval ::vutil::type {}
+
+# double --
+# Double-precision floating point number. Default 0.0
+
+proc ::vutil::type::double {{value 0.0}} {
+    ::tcl::mathfunc::double $value
+}
+
+# int --
+# 32-bit integer value. Default 0
+
+proc ::vutil::type::int {{value 0}} {
+    ::tcl::mathfunc::int $value
+}
+
+# wide --
+# 64-bit integer value. Default 0
+
+proc ::vutil::type::wide {{value 0}} {
+    ::tcl::mathfunc::wide $value
+}
+
+# entier --
+# Big integer value. Default 0
+
+proc ::vutil::type::entier {{value 0}} {
+    ::tcl::mathfunc::entier $value
+}
+
+# bool --
+# Boolean value. Default 0
+
+proc ::vutil::type::bool {{value 0}} {
+    ::tcl::mathfunc::bool $value
+}
+
+# list --
+# Tcl list. Default ""
+
+proc ::vutil::type::list {{value ""}} {
+    if {![string is list $value]} {
+        return -code error "expected list, got \"$value\""
+    }
+    return $value
+}
+
+# dict --
+# Tcl dictionary. Default ""
+
+proc ::vutil::type::dict {{value ""}} {
+    if {[catch {dict size $value}]} {
+        return -code error "expected dict, got \"$value\""
+    }
+    return $value
 }
 
 # Finally, provide the package

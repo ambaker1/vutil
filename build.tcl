@@ -1,5 +1,5 @@
 # Define version numbers
-set version 3.1
+set version 4.0
 # Load required packages for testing
 package require tin 1.1
 # For testing in OpenSees
@@ -142,7 +142,7 @@ test self-tie {
 } -result {0}
 
 test tie-trace-count {
-    # Ensure that the number of traces is 1
+    # Ensure that the number of traces is 2 (write and unset)
 } -body {
     tie a [fruit new]
     tie a [fruit new]
@@ -150,10 +150,10 @@ test tie-trace-count {
 } -result {1}
 
 test GC1 {
-    # Test example of GC superclass
+    # Test example of GarbageCollector superclass
 } -body {
     oo::class create veggie {
-        superclass ::vutil::GC
+        superclass ::vutil::GarbageCollector
         variable veggieType veggieCount
         constructor {refName type count} {
             set veggieType $type
@@ -187,10 +187,10 @@ test GC1 {
 } -result {9}
 
 test GC2 {
-    # Test example of GC superclass
+    # Test example of GarbageCollector superclass
 } -body {
     oo::class create container {
-        superclass ::vutil::GC
+        superclass ::vutil::GarbageCollector
         variable myValue
         constructor {varName {value {}}} {
             set myValue $value
@@ -206,9 +206,9 @@ test GC2 {
 test GC3 {
     # Another example, a bit more sophisticated
 } -body {
-    # Create class that is subclass of ::vutil::GC
+    # Create class that is subclass of ::vutil::GarbageCollector
     oo::class create count {
-        superclass ::vutil::GC
+        superclass ::vutil::GarbageCollector
         variable i
         constructor {refName value} {
             set i $value
@@ -239,40 +239,45 @@ test GC3 {
 test Container {
     # Container superclass. 
 } -body {
+    # Create a class for manipulating lists of floating point values
     oo::class create vector {
-        superclass ::vutil::Container
-        variable self; # Access the "self" variable from superclass
-        method SetValue {value} {
-            # Convert to double
-            next [lmap x $value {::tcl::mathfunc::double $x}]
+        superclass ::vutil::ValueContainer
+        variable myValue; # Access "myValue" from superclass
+        constructor {varName {value ""}} {
+            next $varName $value double
+        }
+        method ValidateValue {value} {
+            lmap x $value {
+                next $x
+            }
         }
         method print {args} {
-            puts {*}$args $self
+            puts {*}$args $myValue
         }
         method += {value} {
-            set self [lmap x $self {expr {$x + $value}}]
+            set myValue [lmap x $myValue {expr {$x + $value}}]
             return [self]
         }
         method -= {value} {
-            set self [lmap x $self {expr {$x - $value}}]
+            set myValue [lmap x $myValue {expr {$x - $value}}]
             return [self]
         }
         method *= {value} {
-            set self [lmap x $self {expr {$x * $value}}]
+            set myValue [lmap x $myValue {expr {$x * $value}}]
             return [self]
         }
         method /= {value} {
-            set self [lmap x $self {expr {$x / $value}}]
+            set myValue [lmap x $myValue {expr {$x / $value}}]
             return [self]
         }
         method @ {index args} {
             if {[llength $args] == 0} {
-                return [lindex $self $index]
+                return [lindex $myValue $index]
             } elseif {[llength $args] != 2 || [lindex $args 0] ne "="} {
                 return -code error "wrong # args: should be\
                         \"[self] @ index ?= value?\""
             }
-            lset self $index [::tcl::mathfunc::double [lindex $args 1]]
+            lset myValue $index [::tcl::mathfunc::double [lindex $args 1]]
             return [self]
         }
         export += -= *= /= @
@@ -285,6 +290,16 @@ test Container {
     assert [$x | @ 3 = 10] eq {6.0 7.0 8.0 10.0}
     assert [$x] eq {6.0 7.0 8.0}
 }
+
+test SelfRef {
+    # Use alias $ for current object.
+} -body {
+    new x = 5
+    assert [$x | := {[$] + 10}] == 15
+    assert [$x | := {[lrepeat [$] foo]}] eq {foo foo foo foo foo}
+}
+
+test amp {} {new double x = 5; $x & value {expr {$value + 10}}} {15.0}
 
 # Check number of failed tests
 set nFailed $::tcltest::numTests(Failed)
@@ -305,7 +320,7 @@ exec tclsh install.tcl
 tin forget vutil
 tin clear
 tin import vutil -exact $version
-
+exit
 # Run examples
 cd examples
 test doc_examples {
@@ -327,10 +342,9 @@ Variable-object ties
 hello world
 hello world
 invalid command name "::bar"
-Simple container class
+Simple value container class
 hello world
-foo bar
-Advanced container class
+Advanced value container class
 6.0 7.0 8.0
 6.0 7.0 8.0
 8.0
