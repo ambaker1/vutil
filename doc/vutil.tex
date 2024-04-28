@@ -164,8 +164,9 @@ Note: You can tie array elements, but not an entire array, and you cannot tie a 
 
 \clearpage
 \section{Garbage Collection Superclass}
-The class \cmdlink{::vutil::GarbageCollector} is a TclOO superclass that includes garbage collection. 
-This class is not exported, and not intended for direct use, as it is simply a template for classes with built-in garbage collection, by tying the object to a specified variable using \cmdlink{tie}.
+The class \cmdlink{::vutil::GarbageCollector} is a TclOO superclass that includes garbage collection by tying the object to a specified variable using \cmdlink{tie}. This class is not exported.
+
+Below is the syntax for the superclass constructor.
 
 \begin{syntax}
 \command{::vutil::GarbageCollector} new \$varName
@@ -241,7 +242,7 @@ my SetValue \$value
 \$value & Value to store in container. 
 \end{args}
 
-\begin{example}{Simple Container}
+\begin{example}{Simple container}
 \begin{lstlisting}
 ::vutil::ValueContainer new x
 $x = {hello world}
@@ -255,7 +256,7 @@ hello world
 
 \clearpage
 \subsection{Math Assignment Operator}
-The math assignment operator, ``\texttt{:=}'', calls the \textit{SetValue} method after evaluating the expression passed through the \textit{expr} command and the \textit{Uplevel} method.
+The math assignment operator, ``\texttt{:=}'', calls the \textit{SetValue} method after evaluating the expression passed through the Tcl \textit{expr} command.
 \begin{syntax}
 \method{vc}{:=} \$expr
 \end{syntax}
@@ -263,7 +264,7 @@ The math assignment operator, ``\texttt{:=}'', calls the \textit{SetValue} metho
 \$expr & Expression to evaluate and assign to object.
 \end{args}
 
-The math assignment operator makes use of the private method \textit{Uplevel}, which evaluates the body of script at a specified level, while making the object command name available through the alias ``\texttt{\$.}''.
+The math assignment operator makes use of the private method \textit{Uplevel}, which evaluates the body of script at a specified level, while making the object command name available through the alias ``\texttt{\$.}''. This can be nested, as it restores the old alias after evaluation.
 \begin{syntax}
 my Uplevel \$level \$body
 \end{syntax}
@@ -277,7 +278,7 @@ my Uplevel \$level \$body
 
 \begin{example}{Modifying a container object}
 \begin{lstlisting}
-::vutil::ValueContainer new x = 5.0
+[::vutil::ValueContainer new x] = 5.0
 $x := {[$.] + 5}
 puts [$x]
 \end{lstlisting}
@@ -318,7 +319,7 @@ my RefEval \$varName \$body
 \end{args}
 \begin{example}{Advanced methods}
 \begin{lstlisting}
-::vutil::ValueContainer new x = {1 2 3}
+[::vutil::ValueContainer new x] = {1 2 3}
 # Use ampersand method to use commands that take variable name as input
 $x & ref {
     lappend ref 4
