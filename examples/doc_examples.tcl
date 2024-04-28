@@ -36,64 +36,80 @@ unset a; # destroys object
 catch {$b sayhello} result; # throws error
 puts $result
 
-puts "Simple container class"
+puts "Simple value container class"
 oo::class create value {
-    superclass ::vutil::GC
+    superclass ::vutil::GarbageCollector
     variable myValue
-    constructor {varName {value {}}} {
-        set myValue $value
-        next $varName
-    }
     method set {value} {set myValue $value}
     method value {} {return $myValue}
 }
-value new x {hello world}; # create new value, tie to x
-[$x --> y] set {foo bar}; # copy to y, set y to {foo bar}
-puts [$x value]
+[value new x] --> y; # create x, and copy to y.
+$y set {hello world}; # modify $y
+unset x; # destroys $x
 puts [$y value]
 
-puts "Advanced container class"
+puts "Simple container"
+::vutil::ValueContainer new x
+$x = {hello world}
+puts [$x]
+
+puts "Modifying a container object"
+[::vutil::ValueContainer new x] = 5.0
+$x := {[$.] + 5}
+puts [$x]
+
+puts "Advanced methods"
+[::vutil::ValueContainer new x] = {1 2 3}
+# Use ampersand method to use commands that take variable name as input
+$x & ref {
+    lappend ref 4
+}
+puts [$x | = {hello world}]; # operates on temp object
+puts [$x]
+
+puts "Advanced value container class"
+# Create a class for manipulating lists of floating point values
 # Create a class for manipulating lists of floating point values
 oo::class create vector {
-    superclass ::vutil::Container
-    variable self; # Access the "self" variable from superclass
+    superclass ::vutil::ValueContainer
+    variable myValue; # Access "myValue" from superclass
     method SetValue {value} {
         # Convert to double
         next [lmap x $value {::tcl::mathfunc::double $x}]
     }
     method print {args} {
-        puts {*}$args $self
+        puts {*}$args $myValue
     }
     method += {value} {
-        set self [lmap x $self {expr {$x + $value}}]
+        set myValue [lmap x $myValue {expr {$x + $value}}]
         return [self]
     }
     method -= {value} {
-        set self [lmap x $self {expr {$x - $value}}]
+        set myValue [lmap x $myValue {expr {$x - $value}}]
         return [self]
     }
     method *= {value} {
-        set self [lmap x $self {expr {$x * $value}}]
+        set myValue [lmap x $myValue {expr {$x * $value}}]
         return [self]
     }
     method /= {value} {
-        set self [lmap x $self {expr {$x / $value}}]
+        set myValue [lmap x $myValue {expr {$x / $value}}]
         return [self]
     }
     method @ {index args} {
         if {[llength $args] == 0} {
-            return [lindex $self $index]
+            return [lindex $myValue $index]
         } elseif {[llength $args] != 2 || [lindex $args 0] ne "="} {
             return -code error "wrong # args: should be\
                     \"[self] @ index ?= value?\""
         }
-        lset self $index [::tcl::mathfunc::double [lindex $args 1]]
+        lset myValue $index [::tcl::mathfunc::double [lindex $args 1]]
         return [self]
     }
     export += -= *= /= @
 }
+# Create a vector
 vector new x {1 2 3}
 puts [$x | += 5]; # perform operation on temp object
 [$x += 5] print; # same operation, on main object
 puts [$x @ end]; # index into object
-

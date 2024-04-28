@@ -1,5 +1,5 @@
 # Define version numbers
-set version 3.1
+set version 4.0
 # Load required packages for testing
 package require tin 1.1
 # For testing in OpenSees
@@ -15,6 +15,8 @@ tin bake src build $config
 tin bake doc/template/version.tin doc/template/version.tex $config
 source build/vutil.tcl
 namespace import vutil::*
+
+
 
 test default1 {
     # The variable "a" does not exist. "default" sets it.
@@ -77,6 +79,126 @@ test lock-trace-count {
 # tie
 # untie
 
+# Unlock "a" for tie traces
+unlock a
+# Example class from https://www.tcl.tk/man/tcl8.6/TclCmd/class.html
+oo::class create fruit {
+    method eat {} {
+        return yummy
+    }
+}
+
+test tie_untie {
+    # Basic tie/untie
+} -body {
+    set ::vutil::tie_count 0
+    set object [fruit new]
+    tie a $object
+    assert [trace info variable a] eq {{{write unset} {::vutil::TieVarTrace 0}}}
+    assert [trace info command $a] eq {{{rename delete} {::vutil::TieObjTrace 0}}}
+    untie a
+    assert [trace info variable a] eq ""
+    assert [trace info command $a] eq ""
+    $a eat
+} -result {yummy}
+
+test retie {
+    # Tying an object twice does nothing, but creates new tie traces
+} -body {
+    set ::vutil::tie_count 0
+    set object [fruit new]
+    tie a $object
+    tie a $object
+    assert [trace info variable a] eq {{{write unset} {::vutil::TieVarTrace 1}}}
+    assert [trace info command $a] eq {{{rename delete} {::vutil::TieObjTrace 1}}}
+    $a eat
+} -result {yummy}
+
+test tie_unset {
+    # Ensure that unsetting a variable destroys the object
+} -body {
+    set ::vutil::tie_count 0
+    set object [fruit new]
+    tie a $object
+    assert [trace info variable a] eq {{{write unset} {::vutil::TieVarTrace 0}}}
+    assert [trace info command $a] eq {{{rename delete} {::vutil::TieObjTrace 0}}}
+    unset a
+    assert [trace info variable a] eq ""
+    assert [info command $object] eq ""
+}
+
+test tie_write {
+    # Ensure that writing to a variable destroys the object
+} -body {
+    set ::vutil::tie_count 0
+    set object [fruit new]
+    tie a $object
+    assert [trace info variable a] eq {{{write unset} {::vutil::TieVarTrace 0}}}
+    assert [trace info command $a] eq {{{rename delete} {::vutil::TieObjTrace 0}}}
+    set a 5
+    assert [trace info variable a] eq ""
+    assert [info command $object] eq ""
+}
+
+test tie_rename {
+    # Ensure that renaming an object breaks the tie
+} -body {
+    set ::vutil::tie_count 0
+    set object [fruit new]
+    tie a $object
+    assert [trace info variable a] eq {{{write unset} {::vutil::TieVarTrace 0}}}
+    assert [trace info command $a] eq {{{rename delete} {::vutil::TieObjTrace 0}}}
+    rename $a foo
+    # Note that the variable trace still exists.
+    assert [trace info variable a] eq {{{write unset} {::vutil::TieVarTrace 0}}}
+    assert [trace info command foo] eq {}
+    assert ![info exists ::vutil::tie_object(0)]
+    # Modifying the variable does nothing but clean up the trace.
+    set a 5
+    assert [trace info variable a] eq ""
+    assert [info command foo] eq foo
+}
+rename foo ""
+
+test tie_destroy {
+    # Ensure that destroying an object breaks the tie
+} -body {
+    set ::vutil::tie_count 0
+    set object [fruit new]
+    tie a $object
+    assert [trace info variable a] eq {{{write unset} {::vutil::TieVarTrace 0}}}
+    assert [trace info command $a] eq {{{rename delete} {::vutil::TieObjTrace 0}}}
+    $a destroy
+    # Note that the variable trace still exists.
+    assert [trace info variable a] eq {{{write unset} {::vutil::TieVarTrace 0}}}
+    assert [info command $object] eq {}
+    assert ![info exists ::vutil::tie_object(0)]
+    # Modifying the variable does nothing but clean up the trace.
+    set a 5
+    assert [trace info variable a] eq ""
+    assert [info command $object] eq ""
+}
+
+test tie_multiple {
+    # Have multiple ties on one object
+} -body {
+    set ::vutil::tie_count 0
+    set object [fruit new]
+    tie a $object
+    tie b $object
+    assert [trace info variable a] eq {{{write unset} {::vutil::TieVarTrace 0}}}
+    assert [trace info variable b] eq {{{write unset} {::vutil::TieVarTrace 1}}}
+    assert [trace info command $a] eq {{{rename delete} {::vutil::TieObjTrace 1}} {{rename delete} {::vutil::TieObjTrace 0}}}
+    set a 5; # destroys object
+    assert [trace info variable a] eq ""
+    # Variable trace still exists on b, but command does not exist
+    assert [trace info variable b] eq {{{write unset} {::vutil::TieVarTrace 1}}}
+    assert [info command $b] eq ""
+    set b 5; # removes trace on b
+    assert [trace info variable a] eq ""
+    assert [trace info variable b] eq ""
+}
+
 test tie_error1 {
     # Trying to tie to something that is not an object will return an error.
 } -body {
@@ -86,12 +208,6 @@ test tie_error1 {
 test tie_error2 {
     # Error for when a variable is locked
 } -body {
-    # Example from https://www.tcl.tk/man/tcl8.6/TclCmd/class.html
-    oo::class create fruit {
-        method eat {} {
-            puts "yummy!"
-        }
-    }
     try {
         lock a 5
         tie a [fruit new]
@@ -100,60 +216,11 @@ test tie_error2 {
     }
 } -returnCodes {1} -result {cannot tie "a": read-only}
 
-test tie {
-    # Verify that you can tie and untie TclOO objects to variables
-} -body {
-    set result ""
-    tie a [fruit new]
-    set b $a; # Save alias
-    lappend result [info object isa object $a]; # true
-    lappend result [info object isa object $b]; # true
-    unset a; # destroys object tied to $a
-    lappend result [info exists a];             # false
-    lappend result [info object isa object $b]; # false
-    tie a [fruit new]
-    untie a
-    set b $a
-    lappend result [info object isa object $a]; # true
-    lappend result [info object isa object $b]; # true
-    unset a
-    lappend result [info exists a];             # false
-    lappend result [info object isa object $b]; # true
-    tie b $b; # Now b is tied
-    $b destroy
-    lappend result [info exists b]; # true, does not delete variable
-    # Ensure that retying a variable deletes the old 
-    tie a [fruit new]
-    set b $a
-    tie a $a
-    lappend result [info object isa object $b]; # true
-    tie a [fruit new]
-    lappend result [info object isa object $b]; # false
-} -result {1 1 0 0 1 1 0 1 1 1 0}
-
-test self-tie {
-    # Ensure that you can self-tie a variable
-} -body {
-    set a [fruit new]
-    tie a; # Ties a to $a
-    set b $a; # Alias
-    unset a; # Destroys the object
-    info object isa object $b
-} -result {0}
-
-test tie-trace-count {
-    # Ensure that the number of traces is 1
-} -body {
-    tie a [fruit new]
-    tie a [fruit new]
-    llength [trace info variable a]
-} -result {1}
-
 test GC1 {
-    # Test example of GC superclass
+    # Test example of GarbageCollector superclass
 } -body {
     oo::class create veggie {
-        superclass ::vutil::GC
+        superclass ::vutil::GarbageCollector
         variable veggieType veggieCount
         constructor {refName type count} {
             set veggieType $type
@@ -186,29 +253,12 @@ test GC1 {
     $x count
 } -result {9}
 
-test GC2 {
-    # Test example of GC superclass
+test GarbageCollector {
+    # Testing features of the GarbageCollector
 } -body {
-    oo::class create container {
-        superclass ::vutil::GC
-        variable myValue
-        constructor {varName {value {}}} {
-            set myValue $value
-            next $varName
-        }
-        method set {value} {set myValue $value}
-        method value {} {return $myValue}
-    }
-    [container new x] set {hello world}
-    $x value
-} -result {hello world}
-
-test GC3 {
-    # Another example, a bit more sophisticated
-} -body {
-    # Create class that is subclass of ::vutil::GC
+    # Create class that is subclass of ::vutil::GarbageCollector
     oo::class create count {
-        superclass ::vutil::GC
+        superclass ::vutil::GarbageCollector
         variable i
         constructor {refName value} {
             set i $value
@@ -236,77 +286,64 @@ test GC3 {
     llength [info class instances count]
 } -result {2}
 
-test Container {
-    # Container superclass. 
+test ValueContainer {
+    # ValueContainer basic test
 } -body {
-    oo::class create vector {
-        superclass ::vutil::Container
-        variable self; # Access the "self" variable from superclass
-        method SetValue {value} {
-            # Convert to double
-            next [lmap x $value {::tcl::mathfunc::double $x}]
-        }
-        method print {args} {
-            puts {*}$args $self
-        }
-        method += {value} {
-            set self [lmap x $self {expr {$x + $value}}]
-            return [self]
-        }
-        method -= {value} {
-            set self [lmap x $self {expr {$x - $value}}]
-            return [self]
-        }
-        method *= {value} {
-            set self [lmap x $self {expr {$x * $value}}]
-            return [self]
-        }
-        method /= {value} {
-            set self [lmap x $self {expr {$x / $value}}]
-            return [self]
-        }
-        method @ {index args} {
-            if {[llength $args] == 0} {
-                return [lindex $self $index]
-            } elseif {[llength $args] != 2 || [lindex $args 0] ne "="} {
-                return -code error "wrong # args: should be\
-                        \"[self] @ index ?= value?\""
-            }
-            lset self $index [::tcl::mathfunc::double [lindex $args 1]]
-            return [self]
-        }
-        export += -= *= /= @
-    }
-    vector new x
-    $x = {1 2 3}
-    assert [$x += 5] eq $x
-    assert [$x] eq {6.0 7.0 8.0}
-    assert [$x | *= 5] eq {30.0 35.0 40.0}
-    assert [$x | @ 3 = 10] eq {6.0 7.0 8.0 10.0}
-    assert [$x] eq {6.0 7.0 8.0}
+    ::vutil::ValueContainer new x
+    $x = 10
+    $x
+} -result {10}
+
+test SelfRef {
+    # Use alias $. for current object.
+} -body {
+    ::vutil::ValueContainer new x 5
+    assert [$x | := {[$.] + 10}] == 15
+    assert [$x | := {[lrepeat [$.] foo]}] eq {foo foo foo foo foo}
 }
 
-# Check number of failed tests
-set nFailed $::tcltest::numTests(Failed)
+test Uplevel {
+    # ValueContainer Uplevel test
+} -body {
+    ::vutil::ValueContainer new x
+    $x = 1
+    $x := {[[$. := {[$.] + 1}]] + 1}; # Nested call
+    $x
+} -result {3}
 
-# Clean up and report on tests
-cleanupTests
+test Pipe {
+    # ValueContainer temporary object test
+} -body {
+    ::vutil::ValueContainer new x 5.0
+    [$x --> y] = [$x | := {[$.] ** 2}]
+    list [$x] [$y]
+} -result {5.0 25.0}
 
-# If tests failed, return error
-if {$nFailed > 0} {
-    error "$nFailed tests failed"
-}
+test RefEval_1 {
+    # Reference evaluation
+} -body {
+    ::vutil::ValueContainer new x 5
+    $x & ref {incr ref}
+    assert ![info exists ref]
+    $x
+} -result {6}
 
-# Tests passed, copy build files to main folder and install
-file copy -force {*}[glob -directory build *] [pwd]
-exec tclsh install.tcl
+test RefEval_2 {
+    # Delete object
+} -body {
+    ::vutil::ValueContainer new x 5
+    $x & ref {unset ref}
+    info object isa object $x
+} -result {0}
 
-# Verify installation
-tin forget vutil
-tin clear
-tin import vutil -exact $version
+test RefEval_3 {
+    # Return value of body
+} -body {
+    ::vutil::ValueContainer new x {1 2 3 4}
+    $x & ref {llength $ref}
+} -result {4}
 
-# Run examples
+# Run examples from Documentation
 cd examples
 test doc_examples {
     # Documentation examples, (note, not automatically built from docs)
@@ -327,16 +364,42 @@ Variable-object ties
 hello world
 hello world
 invalid command name "::bar"
-Simple container class
+Simple value container class
 hello world
-foo bar
-Advanced container class
+Simple container
+hello world
+Modifying a container object
+10.0
+Advanced methods
+hello world
+1 2 3 4
+Advanced value container class
 6.0 7.0 8.0
 6.0 7.0 8.0
 8.0
 } -errorOutput {failed to modify "a": read-only
 }
 cd ..
+
+# Check number of failed tests
+set nFailed $::tcltest::numTests(Failed)
+
+# Clean up and report on tests
+cleanupTests
+
+# If tests failed, return error
+if {$nFailed > 0} {
+    error "$nFailed tests failed"
+}
+
+# Tests passed, copy build files to main folder and install
+file copy -force {*}[glob -directory build *] [pwd]
+exec tclsh install.tcl
+
+# Verify installation
+tin forget vutil
+tin clear
+tin import vutil -exact $version
 
 # Build documentation
 puts "Building documentation..."
