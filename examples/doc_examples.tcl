@@ -48,7 +48,27 @@ $y set {hello world}; # modify $y
 unset x; # destroys $x
 puts [$y value]
 
+puts "Simple container"
+::vutil::ValueContainer new x
+$x = {hello world}
+puts [$x]
+
+puts "Modifying a container object"
+[::vutil::ValueContainer new x] = 5.0
+$x := {[$.] + 5}
+puts [$x]
+
+puts "Advanced methods"
+[::vutil::ValueContainer new x] = {1 2 3}
+# Use ampersand method to use commands that take variable name as input
+$x & ref {
+    lappend ref 4
+}
+puts [$x | = {hello world}]; # operates on temp object
+puts [$x]
+
 puts "Advanced value container class"
+# Create a class for manipulating lists of floating point values
 # Create a class for manipulating lists of floating point values
 oo::class create vector {
     superclass ::vutil::ValueContainer
@@ -88,6 +108,7 @@ oo::class create vector {
     }
     export += -= *= /= @
 }
+# Create a vector
 vector new x {1 2 3}
 puts [$x | += 5]; # perform operation on temp object
 [$x += 5] print; # same operation, on main object

@@ -158,6 +158,7 @@ test tie_rename {
     assert [trace info variable a] eq ""
     assert [info command foo] eq foo
 }
+rename foo ""
 
 test tie_destroy {
     # Ensure that destroying an object breaks the tie
@@ -252,25 +253,8 @@ test GC1 {
     $x count
 } -result {9}
 
-test GC2 {
-    # Test example of GarbageCollector superclass
-} -body {
-    oo::class create container {
-        superclass ::vutil::GarbageCollector
-        variable myValue
-        constructor {varName {value {}}} {
-            set myValue $value
-            next $varName
-        }
-        method set {value} {set myValue $value}
-        method value {} {return $myValue}
-    }
-    [container new x] set {hello world}
-    $x value
-} -result {hello world}
-
-test GC3 {
-    # Another example, a bit more sophisticated
+test GarbageCollector {
+    # Testing features of the GarbageCollector
 } -body {
     # Create class that is subclass of ::vutil::GarbageCollector
     oo::class create count {
@@ -302,95 +286,64 @@ test GC3 {
     llength [info class instances count]
 } -result {2}
 
-test Container {
-    # Container superclass. 
+test ValueContainer {
+    # ValueContainer basic test
 } -body {
-    # Create a class for manipulating lists of floating point values
-    oo::class create vector {
-        superclass ::vutil::ValueContainer
-        variable myValue; # Access "myValue" from superclass
-        constructor {varName {value ""}} {
-            next $varName $value
-        }
-        method SetValue {value} {
-            next [lmap x $value {::tcl::mathfunc::double $x}]
-        }
-        method print {args} {
-            puts {*}$args $myValue
-        }
-        method += {value} {
-            set myValue [lmap x $myValue {expr {$x + $value}}]
-            return [self]
-        }
-        method -= {value} {
-            set myValue [lmap x $myValue {expr {$x - $value}}]
-            return [self]
-        }
-        method *= {value} {
-            set myValue [lmap x $myValue {expr {$x * $value}}]
-            return [self]
-        }
-        method /= {value} {
-            set myValue [lmap x $myValue {expr {$x / $value}}]
-            return [self]
-        }
-        method @ {index args} {
-            if {[llength $args] == 0} {
-                return [lindex $myValue $index]
-            } elseif {[llength $args] != 2 || [lindex $args 0] ne "="} {
-                return -code error "wrong # args: should be\
-                        \"[self] @ index ?= value?\""
-            }
-            lset myValue $index [::tcl::mathfunc::double [lindex $args 1]]
-            return [self]
-        }
-        export += -= *= /= @
-    }
-    vector new x
-    $x = {1 2 3}
-    assert [$x += 5] eq $x
-    assert [$x] eq {6.0 7.0 8.0}
-    assert [$x | *= 5] eq {30.0 35.0 40.0}
-    assert [$x | @ 3 = 10] eq {6.0 7.0 8.0 10.0}
-    assert [$x] eq {6.0 7.0 8.0}
-}
+    ::vutil::ValueContainer new x
+    $x = 10
+    $x
+} -result {10}
 
 test SelfRef {
-    # Use alias $ for current object.
+    # Use alias $. for current object.
 } -body {
     ::vutil::ValueContainer new x 5
-    assert [$x | := {[$] + 10}] == 15
-    assert [$x | := {[lrepeat [$] foo]}] eq {foo foo foo foo foo}
+    assert [$x | := {[$.] + 10}] == 15
+    assert [$x | := {[lrepeat [$.] foo]}] eq {foo foo foo foo foo}
 }
 
-test Amp {
-    # Use reference variable to directly modify object.
+test Uplevel {
+    # ValueContainer Uplevel test
+} -body {
+    ::vutil::ValueContainer new x
+    $x = 1
+    $x := {[[$. := {[$.] + 1}]] + 1}; # Nested call
+    $x
+} -result {3}
+
+test Pipe {
+    # ValueContainer temporary object test
+} -body {
+    ::vutil::ValueContainer new x 5.0
+    [$x --> y] = [$x | := {[$.] ** 2}]
+    list [$x] [$y]
+} -result {5.0 25.0}
+
+test RefEval_1 {
+    # Reference evaluation
 } -body {
     ::vutil::ValueContainer new x 5
-    $x & value {expr {$value + 10.0}}
-} -result {15.0}
+    $x & ref {incr ref}
+    assert ![info exists ref]
+    $x
+} -result {6}
 
-# Check number of failed tests
-set nFailed $::tcltest::numTests(Failed)
+test RefEval_2 {
+    # Delete object
+} -body {
+    ::vutil::ValueContainer new x 5
+    $x & ref {unset ref}
+    info object isa object $x
+} -result {0}
 
-# Clean up and report on tests
-cleanupTests
+test RefEval_3 {
+    # Return value of body
+} -body {
+    ::vutil::ValueContainer new x {1 2 3 4}
+    $x & ref {llength $ref}
+} -result {4}
 
-# If tests failed, return error
-if {$nFailed > 0} {
-    error "$nFailed tests failed"
-}
-
-# Tests passed, copy build files to main folder and install
-file copy -force {*}[glob -directory build *] [pwd]
-exec tclsh install.tcl
-
-# Verify installation
-tin forget vutil
-tin clear
-tin import vutil -exact $version
-
-# Run examples
+# Run examples from Documentation
 cd examples
 test doc_examples {
     # Documentation examples, (note, not automatically built from docs)
@@ -413,6 +366,13 @@ hello world
 invalid command name "::bar"
 Simple value container class
 hello world
+Simple container
+hello world
+Modifying a container object
+10.0
+Advanced methods
+hello world
+1 2 3 4
 Advanced value container class
 6.0 7.0 8.0
 6.0 7.0 8.0
@@ -420,6 +380,26 @@ Advanced value container class
 } -errorOutput {failed to modify "a": read-only
 }
 cd ..
+
+# Check number of failed tests
+set nFailed $::tcltest::numTests(Failed)
+
+# Clean up and report on tests
+cleanupTests
+
+# If tests failed, return error
+if {$nFailed > 0} {
+    error "$nFailed tests failed"
+}
+
+# Tests passed, copy build files to main folder and install
+file copy -force {*}[glob -directory build *] [pwd]
+exec tclsh install.tcl
+
+# Verify installation
+tin forget vutil
+tin clear
+tin import vutil -exact $version
 
 # Build documentation
 puts "Building documentation..."
