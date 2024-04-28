@@ -11,6 +11,9 @@
 
 # Define namespace
 namespace eval ::vutil {
+    variable tie_count 0; # Counter for ties
+    variable tie_objects; # Array with tied objects
+    array unset tie_objects
     namespace export default; # Set a variable if it does not exist
     namespace export lock unlock; # Hard set a Tcl variable
     namespace export tie untie; # Tie a Tcl variable to a Tcl object
@@ -31,11 +34,11 @@ namespace eval ::vutil {
 # value         Variable default value
 
 proc ::vutil::default {varName value} {
-    upvar 1 $varName var
-    if {![info exists var]} {
-        set var $value
+    upvar 1 $varName myVar
+    if {![info exists myVar]} {
+        set myVar $value
     } else {
-        set value $var
+        set value $myVar
     }
     return $value
 }
@@ -53,14 +56,14 @@ proc ::vutil::default {varName value} {
 # value         Value to set
 
 proc ::vutil::lock {varName args} {
-    upvar 1 $varName var
-    if {[array exists var]} {
+    upvar 1 $varName myVar
+    if {[array exists myVar]} {
         return -code error "cannot lock an array"
     }
     # Switch for arity (allow for self-tie)
     if {[llength $args] == 0} {
-        if {[info exists var]} {
-            set value $var
+        if {[info exists myVar]} {
+            set value $myVar
         } else {
             return -code error "can't read \"$varName\": no such variable"
         }
@@ -70,12 +73,12 @@ proc ::vutil::lock {varName args} {
         return -code error "wrong # args: should be \"lock varName ?value?\""
     }
     # Remove any existing lock trace
-    if {[info exists var]} {
-        unlock var
+    if {[info exists myVar]} {
+        unlock myVar
     }
     # Set value and define lock trace
-    set var $value
-    trace add variable var write [list ::vutil::LockTrace $value]
+    set myVar $value
+    trace add variable myVar write [list ::vutil::LockTrace $value]
     return $value
 }
 
@@ -91,15 +94,15 @@ proc ::vutil::lock {varName args} {
 
 proc ::vutil::unlock {args} {
     foreach varName $args {
-        upvar 1 $varName var
-        if {[array exists var]} {
+        upvar 1 $varName myVar
+        if {[array exists myVar]} {
             return -code error "cannot unlock an array"
         }
-        if {![info exists var]} {
+        if {![info exists myVar]} {
             return -code error "can't unlock \"$varName\": no such variable"
         }
-        set value $var; # Current value
-        trace remove variable var write [list ::vutil::LockTrace $value]
+        set value $myVar; # Current value
+        trace remove variable myVar write [list ::vutil::LockTrace $value]
     }
     return
 }
@@ -119,12 +122,12 @@ proc ::vutil::unlock {args} {
 # op            Trace operation (unused)
 
 proc ::vutil::LockTrace {value varName index op} {
-    upvar 1 $varName var
-    if {[array exists var]} {
-        set var($index) $value
+    upvar 1 $varName myVar
+    if {[array exists myVar]} {
+        set myVar($index) $value
         puts stderr "failed to modify \"${varName}($index)\": read-only"
     } else {
-        set var $value
+        set myVar $value
         puts stderr "failed to modify \"$varName\": read-only"
     }
 }
@@ -134,33 +137,35 @@ proc ::vutil::LockTrace {value varName index op} {
 
 # tie --
 # 
-# Tie a variable to a Tcl object, such that when the variable is modified or
-# unset, by unset or by going out of scope, that the object is destroyed as well
+# Tie a variable to a Tcl object, such that when the reference variable is 
+# modified, unset, or goes out of scope, that the object is destroyed as well.
 #
 # Syntax:
-# tie $varName <$object>
+# tie $refName <$object>
 #
 # Arguments:
-# varName       Reference variable representing object
+# refName       Reference variable representing object
 # object        TclOO object
 
-proc ::vutil::tie {varName args} {
+proc ::vutil::tie {refName args} {
+    variable tie_count
+    variable tie_object
     # Create upvar link to reference variable
-    upvar 1 $varName var
-    if {[array exists var]} {
+    upvar 1 $refName refVar
+    if {[array exists refVar]} {
         return -code error "cannot tie an array"
     }
     # Switch for arity (allow for self-tie)
     if {[llength $args] == 0} {
-        if {[info exists var]} {
-            set object $var
+        if {[info exists refVar]} {
+            set object $refVar
         } else {
-            return -code error "can't read \"$varName\": no such variable"
+            return -code error "can't read \"$refName\": no such variable"
         }
     } elseif {[llength $args] == 1} {
         set object [lindex $args 0]
     } else {
-        return -code error "wrong # args: should be \"tie varName ?object?\""
+        return -code error "wrong # args: should be \"tie refName ?object?\""
     }
     
     # Verify that input is an object
@@ -168,19 +173,28 @@ proc ::vutil::tie {varName args} {
         return -code error "\"$object\" is not an object"
     }
     
-    # Set variable to object (triggers any tie traces)
-    set var $object
-    
-    # Verify that assignment worked. 
-    # If not, variable is locked to a different value.
-    if {$var ne $object} {
-        return -code error "cannot tie \"$varName\": read-only"
+    # Untie variable if it exists and is equal to object.
+    if {[info exists refVar]} {
+        if {$refVar eq $object} {
+            untie refVar
+        }
     }
     
-    # Create variable trace to destroy object upon write or unset of variable.
+    # Set variable to object (triggers any tie traces)
+    set refVar $object
+
+    # Verify that assignment worked. 
+    # If not, variable is locked to a different value.
+    if {$refVar ne $object} {
+        return -code error "cannot tie \"$refName\": read-only"
+    }
+    
+    # Create variable traces to destroy object upon write or unset of variable.
     # Also create command trace to prevent renaming of object.
-    trace add variable var {write unset} [list ::vutil::TieVarTrace $object]
-    trace add command $object rename ::vutil::TieObjTrace
+    set tie_object($tie_count) $object
+    trace add variable refVar {write unset} "::vutil::TieVarTrace $tie_count"
+    trace add command $object {rename delete} "::vutil::TieObjTrace $tie_count"
+    incr tie_count
     
     # Return the value (like with "set")
     return $object
@@ -197,34 +211,32 @@ proc ::vutil::tie {varName args} {
 # varName...    Variables to unlock
 
 proc ::vutil::untie {args} {
-    foreach varName $args {
-        upvar 1 $varName var
-        if {[array exists var]} {
+    variable tie_object
+    foreach refName $args {
+        upvar 1 $refName refVar
+        if {![info exists refVar]} {
+            return -code error "can't untie \"$refName\": no such variable"
+        }
+        if {[array exists refVar]} {
             return -code error "cannot untie an array"
         }
-        if {![info exists var]} {
-            return -code error "can't untie \"$var\": no such variable"
+        # Look for tie trace
+        set traces [trace info variable refVar]
+        set idx [lsearch $traces {{write unset} {::vutil::TieVarTrace *}}]
+        if {$idx == -1} {
+            continue
         }
-        RemoveTie var $var
+        # Remove tie traces
+        set tie [lindex $traces $idx 1 1]
+        trace remove variable refVar {write unset} "::vutil::TieVarTrace $tie"
+        if {![info exists tie_object($tie)]} {
+            continue
+        }
+        set object $tie_object($tie)
+        trace remove command $object {rename delete} "::vutil::TieObjTrace $tie"
+        unset tie_object($tie)
     }
     return
-}
-
-# RemoveTie --
-#
-# Private command to remove tie traces from a variable
-#
-# Syntax:
-# RemoveTie $varName $objName
-# 
-# Arguments:
-# varName       Variable name to remove traces from
-# objName       Name of object to remove them from
-
-proc ::vutil::RemoveTie {varName object} {
-    upvar 1 $varName var
-    trace remove variable var {write unset} [list ::vutil::TieVarTrace $object]
-    catch {trace remove command $object rename ::vutil::TieObjTrace}
 }
 
 # TieVarTrace --
@@ -232,60 +244,60 @@ proc ::vutil::RemoveTie {varName object} {
 # Removes traces and destroys associated Tcl object
 #
 # Syntax:
-# TieVarTrace $object $varName $index $op
+# TieVarTrace $tie $varName $index $op
 #
 # Arguments:
+# tie           Tie index
 # varName       Variable (or array) name
 # index         Index of array if variable is array
-# op            Trace operation (unused)
+# op            Trace operation (write or unset), unused
 
-proc ::vutil::TieVarTrace {object varName index op} {
-    upvar 1 $varName var
-    # Remove tie and return if setting to self
-    if {[info exists var]} {
-        if {[array exists var]} {
-            RemoveTie var($index) $object
-            if {$var($index) eq $object} {
-                return
-            }
-        } else {
-            RemoveTie var $object
-            if {$var eq $object} {
-                return
-            }
-        }
+proc ::vutil::TieVarTrace {tie varName index op} {
+    variable tie_object
+    upvar 1 $varName myVar
+    # Get reference name (variable or array(index))
+    if {[array exists myVar]} {
+        set refName myVar($index)
+    } else {
+        set refName myVar
     }
-    # Destroy the object if it still exists.
-    if {[info object isa object $object]} {
-        $object destroy
+    # Remove variable traces and destroy object if it exists
+    trace remove variable $refName {write unset} "::vutil::TieVarTrace $tie"
+    if {[info exists tie_object($tie)]} {
+        $tie_object($tie) destroy
     }
 }
 
 # TieObjTrace --
 #
-# For some reason, the rename trace doesn't work well with TclOO objects.
-# Instead, to ensure proper use, return a fatal error.
+# Remove tie from tie_object array, for rename and delete operations
+#
+# Arguments:
+# tie           Tie index
+# args          Additional trace arguments, unused
 
-proc ::vutil::TieObjTrace {args} {
-    puts stderr "FATAL: cannot rename tied objects"
-    exit 2
+proc ::vutil::TieObjTrace {tie args} {
+    variable tie_object
+    set object $tie_object($tie)
+    trace remove command $object {rename delete} "::vutil::TieObjTrace $tie"
+    unset tie_object($tie)
 }
 
 # Garbage Collection Superclasses
 ################################################################################
 
-# ::vutil::GC --
+# ::vutil::GarbageCollector --
 #
 # Superclass for objects with garbage collection. Not exported.
 #
 # Public methods:
-# $object --> $varName      Copy object to new variable.
+# $object --> $refName      Copy object to new variable.
 
-::oo::class create ::vutil::GC {
+::oo::class create ::vutil::GarbageCollector {
     # Constructor ties object to gc variable.
-    # Call "next $varName" in subclass constructor.    
-    constructor {varName} {
-        uplevel 1 [list ::vutil::tie $varName [self]]
+    # Call "next $refName" in subclass constructor.    
+    constructor {refName} {
+        uplevel 1 [list ::vutil::tie $refName [self]]
     }
     
     # CopyObject (-->) --
@@ -293,48 +305,61 @@ proc ::vutil::TieObjTrace {args} {
     # Copy object to new variable (returns new object name)
     #
     # Syntax:
-    # my CopyObject $varName
-    # $object --> $varName
+    # my CopyObject $refName
+    # $object --> $refName
     #
     # Arguments:
-    # varName       Variable to copy to.
+    # refName       Variable to copy to.
     
-    method CopyObject {varName} {
-        uplevel 1 [list ::vutil::tie $varName [oo::copy [self]]]
+    method CopyObject {refName} {
+        uplevel 1 [list ::vutil::tie $refName [oo::copy [self]]]
     }
-    method --> {varName} {
-        tailcall my CopyObject $varName
+    method --> {refName} {
+        tailcall my CopyObject $refName
     }
     export -->
 }
 
-# ::vutil::Container --
+# ValueContainer --
 #
-# Subclass of ::vutil::GC, superclass for container objects. 
-# Value is stored within object variable "self".
+# ValueContainer class.
+# Value is stored within object variable "myValue".
+#
+# Syntax:
+# ValueContainer new $refName <$value>
+#
+# Arguments:
+# refName       Reference variable for object.
+# value         Value to initialize with. Default "".
 #
 # Public methods:
-# $object               No method (unknown), returns value.
-# $object = $value      Value assignment
-# $object | $arg ...    Evaluate methods in temp object, return result.
+# $valueObj                   Returns value.
+# $valueObj = $value          Value assignment.
+# $valueObj := $expr          Expression assignment.
+# $valueObj | $arg ...        Evaluate methods in temp object, return result.
+# $valueObj & $varName $body  Evaluate script to modify value.
 
-::oo::class create ::vutil::Container {
-    superclass ::vutil::GC; # includes --> method
-    variable self; # Value of object
-    constructor {varName {value ""}} {
+::oo::class create ::vutil::ValueContainer {
+    superclass ::vutil::GarbageCollector; # includes --> method
+    variable myValue; # Value of object
+    constructor {refName {value ""}} {
         my SetValue $value
-        next $varName
+        next $refName
     }
     
-    # GetValue () --
+    # GetValue (unknown) --
     # 
-    # Get the value stored in the container.
+    # Get the value stored in the object.
     #
     # Syntax:
     # my GetValue
+    # $object
     
     method GetValue {} {
-        return $self
+        return $myValue
+    }
+    method value {} {
+        my GetValue
     }
     method unknown {args} {
         if {[llength $args] == 0} {
@@ -344,24 +369,30 @@ proc ::vutil::TieObjTrace {args} {
     }
     unexport unknown
     
-    # SetValue (=) --
+    # SetValue (= :=) --
     #
-    # Set the value stored in the container, and return object name.
+    # Set the value stored in the object, and return object name.
     #
     # Syntax:
     # my SetValue $value
+    # $object = $value
+    # $object := $expr
     # 
     # Arguments:
     # value         Value to set
+    # expr          Math expression to evaluate.
     
     method SetValue {value} {
-        set self $value
+        set myValue $value
         return [self]
     }
     method = {value} {
         my SetValue $value
     }
-    export =
+    method := {expr} {
+        my SetValue [my Uplevel 1 [list expr $expr]]
+    }
+    export = :=
     
     # TempObject (|) --
     # 
@@ -369,6 +400,7 @@ proc ::vutil::TieObjTrace {args} {
     #
     # Syntax:
     # my TempObject $method $arg ...
+    # $object | 
     # 
     # Arguments:
     # method        Method name
@@ -386,7 +418,64 @@ proc ::vutil::TieObjTrace {args} {
         tailcall my TempObject $method {*}$args
     }
     export |
+    
+    # RefEval (&) --
+    #
+    # Evaluate a command, using a temporary variable for the object value.
+    # Unsetting the temporary variable will destroy the object.
+    # Modifications will be applied at the end of the script.
+    #
+    # Syntax:
+    # my RefEval $varName $body 
+    # $object & $varName $body
+    #
+    # Arguments:
+    # varName       Variable name to access raw value with.
+    # body          Body to evaluate.
+    
+    method RefEval {varName body} {
+        upvar 1 $varName myVar
+        set myVar [my GetValue]
+        try {
+            my Uplevel 1 $body; # establishes "$" alias as well
+        } finally {
+            if {![info exists myVar]} {
+                my destroy
+            } elseif {$myVar ne [my GetValue]} {
+                my SetValue $myVar
+                unset myVar
+            }
+        }
+    }
+    method & {varName body} {
+        tailcall my RefEval $varName $body
+    }
+    export &
+    
+    # Uplevel --
+    # 
+    # Evaluate the script in the caller, creating an alias ($) for the object.
+    # Used with operator :=
+    #
+    # Syntax:
+    # my Uplevel $level $body
+    #
+    # Arguments:
+    # level         Level to evaluate at
+    # body          Script to evaluate
+    
+    method Uplevel {level body} {
+        # Set up alias for self.
+        set oldAlias [interp alias {} $]
+        interp alias {} $ {} [self]
+        # Evaluate script, and, finally, reset alias.
+        try {
+            uplevel [incr level] $body
+        } finally {
+            interp alias {} $ {} {*}$oldAlias
+        }
+    }
 }
 
 # Finally, provide the package
-package provide vutil 3.1
+package provide vutil 4.0
