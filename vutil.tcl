@@ -18,6 +18,9 @@ namespace eval ::vutil {
     namespace export lock unlock; # Hard set a Tcl variable
     namespace export tie untie; # Tie a Tcl variable to a Tcl object
 }
+# Superclasses defined:
+# ::vutil::GarbageCollector
+# ::vutil::ValueContainer
 
 # BASIC VARIABLE UTILITIES
 ################################################################################
@@ -346,7 +349,7 @@ proc ::vutil::TieObjTrace {tie args} {
         my SetValue $value
         next $refName
     }
-    
+
     # GetValue (unknown) --
     # 
     # Get the value stored in the object.
@@ -437,12 +440,18 @@ proc ::vutil::TieObjTrace {tie args} {
         upvar 1 $varName myVar
         set myVar [my GetValue]
         try {
-            my Uplevel 1 $body; # establishes "$" alias as well
+            my Uplevel 1 $body; # establishes "$." alias as well
         } finally {
+            # Make changes to value container based on reference variable
             if {![info exists myVar]} {
+                # Destroy if reference variable is unset
                 my destroy
-            } elseif {$myVar ne [my GetValue]} {
-                my SetValue $myVar
+            } else {
+                # Update container if reference variable changed
+                if {$myVar ne [my GetValue]} {
+                    my SetValue $myVar
+                }
+                # Clean up reference variable
                 unset myVar
             }
         }
@@ -466,13 +475,13 @@ proc ::vutil::TieObjTrace {tie args} {
     
     method Uplevel {level body} {
         # Set up alias for self.
-        set oldAlias [interp alias {} $]
-        interp alias {} $ {} [self]
+        set oldAlias [interp alias {} $.]
+        interp alias {} $. {} [self]
         # Evaluate script, and, finally, reset alias.
         try {
             uplevel [incr level] $body
         } finally {
-            interp alias {} $ {} {*}$oldAlias
+            interp alias {} $. {} {*}$oldAlias
         }
     }
 }
