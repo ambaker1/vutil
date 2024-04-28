@@ -10,6 +10,6 @@ Tin makes installing Tcl packages easy, and is available [here](https://github.c
 After installing Tin, simply run the following Tcl code to install the most recent version of "vutil":
 ```tcl
 package require tin
-tin add -auto vutil https://github.com/ambaker1/vutil install.tcl 3.0-
+tin add -auto vutil https://github.com/ambaker1/vutil install.tcl 4.0-
 tin install vutil
 ```
