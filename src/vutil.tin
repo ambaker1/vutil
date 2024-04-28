@@ -442,10 +442,16 @@ proc ::vutil::TieObjTrace {tie args} {
         try {
             my Uplevel 1 $body; # establishes "$." alias as well
         } finally {
+            # Make changes to value container based on reference variable
             if {![info exists myVar]} {
+                # Destroy if reference variable is unset
                 my destroy
-            } elseif {$myVar ne [my GetValue]} {
-                my SetValue $myVar
+            } else {
+                # Update container if reference variable changed
+                if {$myVar ne [my GetValue]} {
+                    my SetValue $myVar
+                }
+                # Clean up reference variable
                 unset myVar
             }
         }
