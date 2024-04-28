@@ -10,6 +10,7 @@
 \title{\Huge Tcl Variable Utilities\\\small Version \version}
 \author{Alex Baker\\\small\url{https://github.com/ambaker1/vutil}}
 \date{\small\today}
+\makeindex[columns=2,title={Command Index}]
 \begin{document}
 \maketitle
 \begin{abstract}
@@ -165,7 +166,6 @@ Note: You can tie array elements, but not an entire array, and you cannot tie a 
 \section{Garbage Collection Superclass}
 The class \cmdlink{::vutil::GarbageCollector} is a TclOO superclass that includes garbage collection. 
 This class is not exported, and not intended for direct use, as it is simply a template for classes with built-in garbage collection, by tying the object to a specified variable using \cmdlink{tie}.
-Below is the syntax for the superclass constructor.
 
 \begin{syntax}
 \command{::vutil::GarbageCollector} new \$varName
@@ -174,12 +174,12 @@ Below is the syntax for the superclass constructor.
 ::vutil::GarbageCollector create \$name \$varName
 \end{syntax}
 \begin{args}
-\$name & Name of object (for ``create'' method). \\
-\$varName & Name of variable for garbage collection. 
+\$varName & Name of variable for garbage collection. \\
+\$name & Name of object (for ``create'' method).
 \end{args}
-In addition to tying the object to a variable in the constructor, the \cmdlink{::vutil::GarbageCollector} superclass also provides a copy method that sets up garbage collection: ``\methodlink[0]{my}{-{}->}'', which calls the private method \textit{CopyObject}
+In addition to tying the object to a variable in the constructor, the \cmdlink{::vutil::GarbageCollector} superclass provides a public copy method: ``\texttt{-{}->}'', which calls the private method \textit{CopyObject}
 \begin{syntax}
-\method{my}{-{}->} \$varName
+\method{gc}{-{}->} \$varName
 \end{syntax}
 \begin{syntax}
 my CopyObject \$varName
@@ -188,7 +188,8 @@ my CopyObject \$varName
 \$varName & Name of variable for garbage collection.
 \end{args}
 
-Below is an example of how this superclass can be used to build garbage collection into a TclOO class. 
+Below is an example of how this superclass can be used to build garbage collection into a TclOO class.
+This process is formalized with the superclass \cmdlink{::vutil::ValueContainer}.
 \begin{example}{Simple value container class}
 \begin{lstlisting}
 oo::class create value {
@@ -210,8 +211,9 @@ hello world
 
 \section{Container Superclass}
 The class \cmdlink{::vutil::ValueContainer} is a TclOO superclass, built on-top of the \cmdlink{::vutil::GarbageCollector} superclass.
-In addition to the copy method ``\methodlink[0]{gc}{-{}->}'', this class stores a value in the variable ``myValue'', which can be accessed with the methods \textit{GetValue} and \textit{SetValue}.
-This class is not exported, and not intended for direct use, but rather is a template for container classes.
+In addition to the copy method ``\texttt{-{}->}'', this class stores a value in the variable ``myValue'', which can be accessed with the methods \textit{GetValue} and \textit{SetValue}.
+This class is not exported.
+
 Below is the syntax for the superclass constructor.
 
 \begin{syntax}
@@ -226,19 +228,11 @@ Below is the syntax for the superclass constructor.
 \$value & Value to store in object. Default blank. 
 \end{args}
 
-
-Calling the object by itself calls the \textit{GetValue} method, which queries the value in the container.
+\subsection{Getting and Setting}
+Calling the object by itself calls the \textit{GetValue} method, which simply queries the value in the container.
+The assignment operator, ``\texttt{=}'', calls the \textit{SetValue} method, which sets the value in the container.
 \begin{syntax}
-\$myObj
-\end{syntax}
-\begin{syntax}
-my GetValue
-\end{syntax}
-
-The assignment operator, ``\methodlink[0]{my}{=}'', calls the \textit{SetValue} method, which sets the value in the object variable.
-
-\begin{syntax}
-\method{my}{=} \$value
+\method{vc}{=} \$value
 \end{syntax}
 \begin{syntax}
 my SetValue \$value
@@ -260,52 +254,87 @@ hello world
 \end{example}
 
 \clearpage
-\subsection{Advanced Container Operators}
-The colon-equals operator, ``\methodlink[0]{my}{:=}'', also calls the \textit{SetValue} method, but after evaluating the result of the expression. 
-For convenience, the object can be accessed with the alias \cmdlink{\$} in the expression.
+\subsection{Math Assignment Operator}
+The math assignment operator, ``\texttt{:=}'', calls the \textit{SetValue} method after evaluating the expression passed through the \textit{expr} command and the \textit{Uplevel} method.
 \begin{syntax}
-\method{my}{:=} \$expr
+\method{vc}{:=} \$expr
 \end{syntax}
 \begin{args}
 \$expr & Expression to evaluate and assign to object.
 \end{args}
+
+The math assignment operator makes use of the private method \textit{Uplevel}, which evaluates the body of script at a specified level, while making the object command name available through the alias ``\texttt{\$.}''.
 \begin{syntax}
-\command{\$} \$arg ...
+my Uplevel \$level \$body
+\end{syntax}
+
+\begin{syntax}
+\command{\$.} \$arg ...
 \end{syntax}
 \begin{args}
 \$arg ... & Method arguments for object.
 \end{args}
 
+\begin{example}{Modifying a container object}
+\begin{lstlisting}
+::vutil::ValueContainer new x = 5.0
+$x := {[$.] + 5}
+puts [$x]
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+10.0
+\end{lstlisting}
+\end{example}
 
-The pipe operator, ``\methodlink[0]{my}{|}'', calls the \textit{TempObject} method, which copies the object to a temporary object, evaluates the method, and returns the result, or the temporary object value if the result is the temporary object.
+\clearpage
+\subsection{Advanced Operators}
+The pipe operator, ``\texttt{|}'', calls the \textit{TempObject} method, which copies the object and evaluates the method, returning the result or the value of the temporary object if the result is the object.
 \begin{syntax}
-\method{my}{|} \$method \$arg ...
+\method{vc}{$\vert$} \$method \$arg ... 
 \end{syntax}
 \begin{syntax}
 my TempObject \$method \$arg ...
 \end{syntax}
+
 \begin{args}
 \$method & Method to evaluate in temporary object. \\
 \$arg ... & Arguments for method.
 \end{args}
 
-The ampersand operator, ``\methodlink[0]{my}{\&}'', calls the \textit{RefEval} method, which copies the object value to a reference variable for direct access in a user-defined script.
-If the reference variable is deleted, it will destroy the object. 
-If the reference variable is modified, it will assign the value to the object.
+The ampersand operator ``\texttt{\&}'', calls the \textit{RefEval} method, which copies the value to a variable, and evaluates a body of script. 
+The changes made to the variable will be applied to the object, and if the variable is unset, the object will be deleted.
 Returns the result of the script.
+
 \begin{syntax}
-\method{my}{\&} \$refName \$body
+\method{vc}{\&} \$varName \$body
 \end{syntax}
 \begin{syntax}
-my RefEval \$refName \$body
+my RefEval \$varName \$body
 \end{syntax}
 \begin{args}
-\$method & Method to evaluate in temporary object. \\
-\$arg ... & Arguments for method.
+\$varName & Variable name to use for reference. \\
+\$body & Body to evaluate.
 \end{args}
+\begin{example}{Advanced methods}
+\begin{lstlisting}
+::vutil::ValueContainer new x = {1 2 3}
+# Use ampersand method to use commands that take variable name as input
+$x & ref {
+    lappend ref 4
+}
+puts [$x | = {hello world}]; # operates on temp object
+puts [$x]
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+hello world
+1 2 3 4
+\end{lstlisting}
+\end{example}
 
 \clearpage
-\begin{example}{Advanced value container class}
+\begin{example}{Using the value container superclass to create a vector class}
 \begin{lstlisting}
 # Create a class for manipulating lists of floating point values
 oo::class create vector {
@@ -346,6 +375,7 @@ oo::class create vector {
     }
     export += -= *= /= @
 }
+# Create a vector
 vector new x {1 2 3}
 puts [$x | += 5]; # perform operation on temp object
 [$x += 5] print; # same operation, on main object
@@ -358,6 +388,8 @@ puts [$x @ end]; # index into object
 8.0
 \end{lstlisting}
 \end{example}
+
+\printindex
 \end{document}
 
 
