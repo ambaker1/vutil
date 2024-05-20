@@ -15,7 +15,7 @@
 \maketitle
 \begin{abstract}
 \begin{center}
-The ``vutil'' package provides utilities such as read-only variables and TclOO garbage collection.
+The ``vutil'' package provides advanced functionality for working with variables in Tcl, such as read-only variables and a comprehensive TclOO garbage collection framework.
 
 This package is also a \textcolor{blue}{\href{https://github.com/ambaker1/Tin}{Tin}} package, and can be loaded in as shown below:
 \end{center}
@@ -178,7 +178,7 @@ Below is the syntax for the superclass constructor.
 \$varName & Name of variable for garbage collection. \\
 \$name & Name of object (for ``create'' method).
 \end{args}
-In addition to tying the object to a variable in the constructor, the \cmdlink{::vutil::GarbageCollector} superclass provides a public copy method: ``\texttt{-{}->}'', which calls the private method \textit{CopyObject}
+In addition to tying the object to a variable in the constructor, the \cmdlink{::vutil::GarbageCollector} superclass provides a public copy method: ``\texttt{-{}->}'', which calls the private method \textit{CopyObject}.
 \begin{syntax}
 \method{gc}{-{}->} \$varName
 \end{syntax}
