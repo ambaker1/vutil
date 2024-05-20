@@ -487,4 +487,4 @@ proc ::vutil::TieObjTrace {tie args} {
 }
 
 # Finally, provide the package
-package provide vutil 4.0
+package provide vutil 4.0.1
