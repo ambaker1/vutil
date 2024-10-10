@@ -1,5 +1,5 @@
 # Define version numbers
-set version 4.0.1
+set version 4.1
 # Load required packages for testing
 package require tin 1.1
 # For testing in OpenSees
@@ -16,11 +16,19 @@ tin bake doc/template/version.tin doc/template/version.tex $config
 source build/vutil.tcl
 namespace import vutil::*
 
-
+test ez_set {
+	# Test out the global command $ for easy set and access of variables
+} -body {
+	$ a = 5; # set a 5
+	$ a := $a + 2; # set a [expr $a + 2]
+	$ a := {$a**2}; # set a [expr {$a**2}]
+	$ a; # set a
+} -result {49}
 
 test default1 {
     # The variable "a" does not exist. "default" sets it.
 } -body {
+	unset a
     default a 5
 } -result {5}
 

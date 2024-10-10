@@ -29,6 +29,40 @@ tin import vutil
 \end{abstract}
 
 \clearpage
+\section{Easier Variable Access and Modification}
+The command \cmdlink{\$} cleans up variable access and modification in Tcl, especially when working with numbers.
+\begin{syntax}
+\command{\$} \$varName <= \$value | := \$arg ...>
+\end{syntax}
+\begin{args}
+\$varName & Name of variable to set \\
+\$value & Value to set \\
+\$arg ... & Tcl expr arguments
+\end{args}
+\begin{example}{Normal variable access/modification}
+\begin{lstlisting}
+set a 5
+set a [expr {$a + 2}]
+puts $a
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+7
+\end{lstlisting}
+\end{example}
+\begin{example}{Simplified variable access/modification}
+\begin{lstlisting}
+$ a = 5
+$ a := {$a + 2}
+puts [$ a]
+\end{lstlisting}
+\tcblower
+\begin{lstlisting}
+7
+\end{lstlisting}
+\end{example}
+
+\clearpage
 \section{Default Variable Values}
 The command \cmdlink{default} assigns a default value to a variable if it does not exist.
 This can be used to write scripts that behave like procedures with default values.

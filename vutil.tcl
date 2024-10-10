@@ -25,6 +25,37 @@ namespace eval ::vutil {
 # BASIC VARIABLE UTILITIES
 ################################################################################
 
+# $ --
+#
+# Global command that makes accessing and setting variables easier.
+#
+# Syntax:
+# $ $varName <= $value | := $arg ...>
+#
+# Arguments:
+# varName		Variable name
+# value			Value to set
+# expr			Expression to evaluate
+
+proc ::$ {varName args} {
+	if {[llength $args] == 0} {
+		tailcall set $varName
+	}
+	# Trim op from args
+	set args [lassign $args op]
+	switch $op {
+		= { # $ $varName = $value
+			tailcall set $varName {*}$args
+		}
+		:= { # $ $varName := $arg ...
+			tailcall set $varName [uplevel 1 [list expr {*}$args]]
+		}
+		default {
+			return -code error "unknown operator \"$op\""
+		}
+	}
+}
+
 # default --
 #
 # Soft set of a variable. Only sets the variable if it does not exist.
@@ -487,4 +518,4 @@ proc ::vutil::TieObjTrace {tie args} {
 }
 
 # Finally, provide the package
-package provide vutil 4.0.1
+package provide vutil 4.1
