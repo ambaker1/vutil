@@ -29,15 +29,15 @@ tin import vutil
 \end{abstract}
 
 \clearpage
-\section{Easier Variable Access and Modification}
-The command \cmdlink{\$} cleans up variable access and modification in Tcl, especially when working with numbers.
+\section{Variable Access and Modification}
+The command \cmdlink{var} cleans up variable access and modification in Tcl, especially when working with numbers.
 \begin{syntax}
-\command{\$} \$varName <= \$value | := \$arg ...>
+\command{var} \$varName <= \$value | := \$expr>
 \end{syntax}
 \begin{args}
 \$varName & Name of variable to set \\
 \$value & Value to set \\
-\$arg ... & Tcl expr arguments
+\$expr & Tcl expression
 \end{args}
 \begin{example}{Normal variable access/modification}
 \begin{lstlisting}
@@ -52,9 +52,9 @@ puts $a
 \end{example}
 \begin{example}{Simplified variable access/modification}
 \begin{lstlisting}
-$ a = 5
-$ a := {$a + 2}
-puts [$ a]
+var a = 5
+var a := {$a + 2}
+puts [var a]
 \end{lstlisting}
 \tcblower
 \begin{lstlisting}

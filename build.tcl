@@ -16,14 +16,13 @@ tin bake doc/template/version.tin doc/template/version.tex $config
 source build/vutil.tcl
 namespace import vutil::*
 
-test ez_set {
-	# Test out the global command $ for easy set and access of variables
+test var {
+	# Test out the var command for easy set and access of variables
 } -body {
-	$ a = 5; # set a 5
-	$ a := $a + 2; # set a [expr $a + 2]
-	$ a := {$a**2}; # set a [expr {$a**2}]
-	$ a; # set a
-} -result {49}
+	var a = 5; # set a 5
+	var a := {$a + 2}; # set a [expr {$a + 2}]
+	var a; # set a
+} -result {7}
 
 test default1 {
     # The variable "a" does not exist. "default" sets it.

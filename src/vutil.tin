@@ -14,7 +14,7 @@ namespace eval ::vutil {
     variable tie_count 0; # Counter for ties
     variable tie_objects; # Array with tied objects
     array unset tie_objects
-    namespace export default; # Set a variable if it does not exist
+    namespace export var default; # Set a variable if it does not exist
     namespace export lock unlock; # Hard set a Tcl variable
     namespace export tie untie; # Tie a Tcl variable to a Tcl object
 }
@@ -25,35 +25,50 @@ namespace eval ::vutil {
 # BASIC VARIABLE UTILITIES
 ################################################################################
 
-# $ --
+# var --
 #
-# Global command that makes accessing and setting variables easier.
+# Makes accessing and setting variables easier.
+# Returns value of variable.
 #
 # Syntax:
-# $ $varName <= $value | := $arg ...>
+# var $varName
+# var $varName = $value
+# var $varName := $expr
 #
 # Arguments:
-# varName		Variable name
-# value			Value to set
-# expr			Expression to evaluate
+# varName       Variable name
+# value         Value to set
+# expr          Tcl expression to evaluate
 
-proc ::$ {varName args} {
-	if {[llength $args] == 0} {
-		tailcall set $varName
-	}
-	# Trim op from args
-	set args [lassign $args op]
-	switch $op {
-		= { # $ $varName = $value
-			tailcall set $varName {*}$args
-		}
-		:= { # $ $varName := $arg ...
-			tailcall set $varName [uplevel 1 [list expr {*}$args]]
-		}
-		default {
-			return -code error "unknown operator \"$op\""
-		}
-	}
+proc ::vutil::var {varName args} {
+    upvar 1 $varName myVar
+    # Trivial case
+    if {[llength $args] == 0} {
+        if {[info exists myVar]} {
+            return $myVar
+        } else {
+            return -code error "can't read \"$varName\": no such variable"
+        } 
+    }
+    # Check arity
+    if {[llength $args] != 2} {
+        return -code error "wrong # args: want \"var varName ?op arg?\""
+    }
+    # Trim op from args
+    lassign $args op arg
+    switch $op {
+        = { # var $varName = $value
+            set myVar $arg
+        }
+        := { # var $varName := $expr
+            set myVar [uplevel 1 [list expr $arg]]
+        }
+        default {
+            return -code error "unknown operator \"$op\""
+        }
+    }
+    # Return value of variable
+    return $myVar
 }
 
 # default --
