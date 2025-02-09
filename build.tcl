@@ -1,7 +1,7 @@
 # Define version numbers
-set version 4.0.1
+set version 4.1
 # Load required packages for testing
-package require tin 1.1
+package require tin 2.0
 # For testing in OpenSees
 if {[info commands test] eq "test"} {
     rename test ops_test
